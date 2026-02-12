@@ -1,0 +1,258 @@
+import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+
+const prisma = new PrismaClient();
+
+async function main() {
+  // Safety check: prevent running seed in production
+  if (process.env.NODE_ENV === 'production') {
+    console.error('ERROR: Cannot run seed in production! This will DELETE all data.');
+    process.exit(1);
+  }
+
+  console.log('Starting seed...');
+
+  // Clear existing data
+  await prisma.payment.deleteMany();
+  await prisma.order.deleteMany();
+  await prisma.timeSlot.deleteMany();
+  await prisma.table.deleteMany();
+  await prisma.admin.deleteMany();
+  await prisma.outlet.deleteMany();
+  await prisma.review.deleteMany();
+  await prisma.menuItem.deleteMany();
+  await prisma.setting.deleteMany();
+
+  // Create Menu Items
+  const menuItems = await Promise.all([
+    prisma.menuItem.create({
+      data: {
+        name: 'Ayam Original Set A',
+        description: 'Nasi, Ayam Original, Sambal, Timun, Kobis & Salad',
+        price: 12.90,
+        image: '/uploads/set-a.png',
+        category: 'Set Menu',
+        ingredients: 'Nasi Putih, Ayam Original, Sambal Gepuk, Timun, Kobis & Salad Segar',
+        freeItem: 'Percuma: Pilihan Minuman (Teh Ais / Air Suam)',
+        isFeatured: true,
+        rating: 4.8,
+        reviewCount: 342,
+      },
+    }),
+    prisma.menuItem.create({
+      data: {
+        name: 'Ayam Original Set B',
+        description: 'Nasi, Ayam Original, Sambal & Timun, Tempe & Tauhu, Kobis & Salad',
+        price: 13.90,
+        image: '/uploads/set-b.png',
+        category: 'Set Menu',
+        ingredients: 'Nasi Putih, Ayam Original, Sambal Gepuk, Timun, Tempe Goreng, Tauhu Goreng, Kobis & Salad Segar',
+        freeItem: 'Percuma: Pilihan Minuman (Teh Ais / Air Suam)',
+        isFeatured: true,
+        rating: 4.9,
+        reviewCount: 215,
+      },
+    }),
+    prisma.menuItem.create({
+      data: {
+        name: 'Nasi Lemak Ayam Crispy',
+        description: 'Nasi lemak harum dengan ayam goreng berempah rangup, sambal padu, ikan bilis dan kacang.',
+        price: 15.90,
+        image: '/uploads/nasi-lemak.png',
+        category: 'Special',
+        ingredients: 'Nasi Lemak, Ayam Berempah, Sambal, Ikan Bilis, Kacang, Telur Rebus, Timun',
+        freeItem: 'Percuma: Teh O Ais Limau',
+        isFeatured: true,
+        rating: 4.7,
+        reviewCount: 128,
+      },
+    }),
+    prisma.menuItem.create({
+      data: {
+        name: 'Koko Meal Special',
+        description: 'Minuman coklat premium yang pekat dan menyegarkan, topping whipped cream & mint.',
+        price: 8.90,
+        image: '/uploads/koko-meal.png',
+        category: 'Drinks',
+        ingredients: 'Coklat Premium, Susu Segar, Whipped Cream',
+        freeItem: 'None',
+        isFeatured: true,
+        rating: 5.0,
+        reviewCount: 85,
+      },
+    }),
+  ]);
+
+  console.log(`✅ Created ${menuItems.length} menu items`);
+
+  // Create real outlets from scrape
+  const outlets = await Promise.all([
+    prisma.outlet.create({
+      data: {
+        name: 'Ayam Gepuk Pak Antok - Bukit Beruang',
+        address: 'No 12, Jalan BB 1, Taman Bukit Beruang, 75450 Melaka',
+        phone: '012-345 6789',
+        openTime: '11:00',
+        closeTime: '22:00',
+        deliveryFee: 5.00,
+        maxCapacity: 91,
+        deliveryEnabled: false,
+      },
+    }),
+    prisma.outlet.create({
+      data: {
+        name: 'Ayam Gepuk Pak Antok - Masjid Tanah',
+        address: 'Lot 55, Jalan Besar, Masjid Tanah, 78300 Melaka',
+        phone: '013-456 7890',
+        openTime: '11:00',
+        closeTime: '22:00',
+        deliveryFee: 6.00,
+        maxCapacity: 128,
+        deliveryEnabled: false,
+      },
+    }),
+    prisma.outlet.create({
+      data: {
+        name: 'Ayam Gepuk Pak Antok - Larkin',
+        address: 'Jalan Garuda, Larkin Jaya, 80350 Johor Bahru, Johor',
+        phone: '014-567 8901',
+        openTime: '11:00',
+        closeTime: '22:00',
+        deliveryFee: 7.00,
+        maxCapacity: 112,
+        deliveryEnabled: false,
+      },
+    }),
+    prisma.outlet.create({
+      data: {
+        name: 'Ayam Gepuk Pak Antok - HQ Melaka',
+        address: 'No 1, Jalan Merdeka, Banda Hilir, 75000 Melaka',
+        phone: '019-999 8888',
+        openTime: '11:00',
+        closeTime: '22:00',
+        deliveryFee: 5.00,
+        maxCapacity: 116,
+        deliveryEnabled: false,
+      },
+    }),
+  ]);
+
+  console.log(`✅ Created ${outlets.length} outlets`);
+
+  // Create tables for each outlet
+  const zones = ['Regular', 'VIP', 'Smoking Room', 'Outdoor'];
+  const tableConfigs = [
+    { tableNo: '1A', capacity: 4, zone: 'Regular' },
+    { tableNo: '1B', capacity: 4, zone: 'Regular' },
+    { tableNo: '1C', capacity: 4, zone: 'Regular' },
+    { tableNo: '1D', capacity: 4, zone: 'Regular' },
+    { tableNo: '2A', capacity: 6, zone: 'Regular' },
+    { tableNo: '2B', capacity: 6, zone: 'Regular' },
+    { tableNo: '2C', capacity: 6, zone: 'Regular' },
+    { tableNo: '2D', capacity: 6, zone: 'Regular' },
+    { tableNo: '1E', capacity: 4, zone: 'VIP' },
+    { tableNo: '1F', capacity: 4, zone: 'VIP' },
+    { tableNo: '1G', capacity: 4, zone: 'Smoking Room' },
+    { tableNo: '1H', capacity: 4, zone: 'Outdoor' },
+  ];
+
+  for (const outlet of outlets) {
+    for (const config of tableConfigs) {
+      await prisma.table.create({
+        data: {
+          outletId: outlet.id,
+          ...config,
+        },
+      });
+    }
+  }
+
+  console.log(`✅ Created ${tableConfigs.length * outlets.length} tables`);
+
+  // Create time slots for each outlet
+  const timeSlots = [
+    '16:00', '16:30', '17:00', '17:30', '18:00', '18:30',
+    '19:00', '19:30', '20:00', '20:30', '21:00',
+  ];
+
+  for (const outlet of outlets) {
+    for (const time of timeSlots) {
+      await prisma.timeSlot.create({
+        data: {
+          outletId: outlet.id,
+          time,
+          maxOrders: 10,
+        },
+      });
+    }
+  }
+
+  console.log(`✅ Created ${timeSlots.length * outlets.length} time slots`);
+
+  // Create master admin with properly hashed password
+  const hashedAdminPassword = await bcrypt.hash('Admin@123', 12);
+  await prisma.admin.create({
+    data: {
+      email: 'admin@ayamgepuk.com',
+      password: hashedAdminPassword,
+      name: 'Master Admin',
+      role: 'MASTER',
+    },
+  });
+
+  console.log('✅ Created master admin');
+
+  // Create settings
+  await prisma.setting.createMany({
+    data: [
+      { key: 'sst_rate', value: '6' },
+      { key: 'booking_window_days', value: '0' }, // Same-day only
+      { key: 'reminder_minutes_before', value: '60' },
+      { key: 'table_lock_minutes', value: '10' },
+    ],
+  });
+
+  // Create Reviews
+  await prisma.review.createMany({
+    data: [
+      {
+        name: 'Nizam Rahman',
+        role: 'Influencer',
+        content: 'Tak payah cakap banyak, kalau sampai keluar ayat "aku mampu cakap sedap", you tau lah level dia. Sekali cuba, susah nak move on!',
+        image: 'NR', // Initials or placeholder
+        rating: 5,
+        isFeatured: true,
+      },
+      {
+        name: 'Amira Othman',
+        role: 'Artist',
+        content: 'Bukan biasa-biasa! Pedasnya bikin nagih!! Suapan kedua makan nasi je pun dah sedap. Korang kena try!',
+        image: 'AO',
+        rating: 5,
+        isFeatured: true,
+      },
+      {
+        name: 'Ari Lesmana',
+        role: 'Musician',
+        content: 'Suasana penuh rasa & irama. Good vibes, great music & even better food! Memang terbaik.',
+        image: 'AL',
+        rating: 5,
+        isFeatured: true,
+      },
+    ],
+  });
+
+  console.log('✅ Created celebrity reviews');
+
+  console.log('✅ Created system settings');
+  console.log('🎉 Seed completed successfully!');
+}
+
+main()
+  .catch((e) => {
+    console.error('❌ Seed failed:', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

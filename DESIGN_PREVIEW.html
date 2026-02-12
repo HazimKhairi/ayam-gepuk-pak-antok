@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Design Preview - Hero Section Updates</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: #f5f5f5;
+        }
+
+        .preview-container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        h1 {
+            text-align: center;
+            color: #8f1e1f;
+            margin-bottom: 2rem;
+            font-size: 2.5rem;
+        }
+
+        .section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        }
+
+        h2 {
+            color: #8f1e1f;
+            margin-bottom: 1.5rem;
+            font-size: 1.75rem;
+        }
+
+        /* Marquee Preview */
+        .marquee-demo {
+            background: #FFC107;
+            color: #8f1e1f;
+            padding: 1rem;
+            overflow: hidden;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+
+        @keyframes marquee {
+            0% { transform: translateX(0%); }
+            100% { transform: translateX(-50%); }
+        }
+
+        .marquee-content {
+            display: flex;
+            animation: marquee 30s linear infinite;
+        }
+
+        .marquee-item {
+            flex-shrink: 0;
+            padding: 0 2rem;
+            font-weight: 700;
+            font-size: 0.95rem;
+            white-space: nowrap;
+        }
+
+        /* Card Grid Preview */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .menu-card {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .menu-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.15);
+        }
+
+        .card-image {
+            height: 18rem;
+            background: linear-gradient(135deg, #FFF5E6 0%, #FFEBE6 100%);
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+        }
+
+        .price-tag {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: #8f1e1f;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .category-badge {
+            position: absolute;
+            bottom: 1rem;
+            left: 1rem;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            padding: 0.25rem 0.75rem;
+            border-radius: 2rem;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #666;
+        }
+
+        .card-content {
+            padding: 1.5rem;
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #222;
+            margin-bottom: 0.75rem;
+        }
+
+        .card-description {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+            line-height: 1.5;
+        }
+
+        .add-btn {
+            width: 100%;
+            background: #8f1e1f;
+            color: white;
+            border: none;
+            padding: 1rem;
+            border-radius: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .add-btn:hover {
+            background: #6d1718;
+            transform: scale(1.02);
+        }
+
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-top: 1rem;
+        }
+
+        .before, .after {
+            padding: 1.5rem;
+            border-radius: 8px;
+        }
+
+        .before {
+            background: #fee;
+            border-left: 4px solid #f44;
+        }
+
+        .after {
+            background: #efe;
+            border-left: 4px solid #4f4;
+        }
+
+        h3 {
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        ul {
+            margin-left: 1.5rem;
+            line-height: 1.8;
+        }
+
+        @media (max-width: 768px) {
+            .comparison {
+                grid-template-columns: 1fr;
+            }
+
+            .card-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-container">
+        <h1>🎨 Hero Section Design Update Preview</h1>
+
+        <!-- Marquee Section -->
+        <div class="section">
+            <h2>1. New Marquee Section</h2>
+            <p style="margin-bottom: 1rem; color: #666;">Continuous scrolling banner at the bottom of the hero showcasing promotions and outlets:</p>
+
+            <div class="marquee-demo">
+                <div class="marquee-content">
+                    <span class="marquee-item">🔥 6 Lokasi di Melaka & Johor</span>
+                    <span class="marquee-item">⭐ Refill Nasi & Sambal PERCUMA</span>
+                    <span class="marquee-item">🎁 Tote Bag Percuma RM30+</span>
+                    <span class="marquee-item">📍 Masjid Tanah • Bukit Beruang • Larkin • Lagenda • Merlimau • Jasin</span>
+                    <span class="marquee-item">🔥 6 Lokasi di Melaka & Johor</span>
+                    <span class="marquee-item">⭐ Refill Nasi & Sambal PERCUMA</span>
+                    <span class="marquee-item">🎁 Tote Bag Percuma RM30+</span>
+                    <span class="marquee-item">📍 Masjid Tanah • Bukit Beruang • Larkin • Lagenda • Merlimau • Jasin</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card Grid Section -->
+        <div class="section">
+            <h2>2. Professional Menu Cards</h2>
+            <p style="margin-bottom: 1rem; color: #666;">Replaced 3D menu with clean, appetizing card layout:</p>
+
+            <div class="card-grid">
+                <div class="menu-card">
+                    <div class="card-image">
+                        🍗
+                        <div class="price-tag">
+                            <span style="font-size: 0.75rem;">RM</span>
+                            <span style="font-size: 1.25rem;">15.90</span>
+                        </div>
+                        <div class="category-badge">Main Course</div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">Set A - Ayam Gepuk</div>
+                        <div class="card-description">Ayam goreng rangup dengan nasi, sambal gesek pedas, dan air sirap ais.</div>
+                        <button class="add-btn">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                            </svg>
+                            Tambah ke Troli
+                        </button>
+                    </div>
+                </div>
+
+                <div class="menu-card">
+                    <div class="card-image">
+                        🍛
+                        <div class="price-tag">
+                            <span style="font-size: 0.75rem;">RM</span>
+                            <span style="font-size: 1.25rem;">17.90</span>
+                        </div>
+                        <div class="category-badge">Main Course</div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">Set B - Combo Special</div>
+                        <div class="card-description">Ayam gepuk dengan nasi berlauk lengkap dan minuman pilihan anda.</div>
+                        <button class="add-btn">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                            </svg>
+                            Tambah ke Troli
+                        </button>
+                    </div>
+                </div>
+
+                <div class="menu-card">
+                    <div class="card-image">
+                        🥤
+                        <div class="price-tag">
+                            <span style="font-size: 0.75rem;">RM</span>
+                            <span style="font-size: 1.25rem;">5.00</span>
+                        </div>
+                        <div class="category-badge">Beverages</div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">Mojito Refresh</div>
+                        <div class="card-description">Minuman segar dengan citarasa mint yang menyegarkan.</div>
+                        <button class="add-btn">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                            </svg>
+                            Tambah ke Troli
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Before vs After Comparison -->
+        <div class="section">
+            <h2>3. Before vs After Comparison</h2>
+            <div class="comparison">
+                <div class="before">
+                    <h3>❌ Before (3D Menu)</h3>
+                    <ul>
+                        <li>Heavy Three.js library (100KB+)</li>
+                        <li>Complex 3D rendering</li>
+                        <li>Slow initial load</li>
+                        <li>Limited accessibility</li>
+                        <li>Desktop-only experience</li>
+                        <li>Harder to interact with</li>
+                    </ul>
+                </div>
+                <div class="after">
+                    <h3>✅ After (Professional Cards)</h3>
+                    <ul>
+                        <li>Pure CSS animations</li>
+                        <li>Fast, responsive layout</li>
+                        <li>Instant page load</li>
+                        <li>Fully accessible</li>
+                        <li>Mobile-optimized</li>
+                        <li>Clear, appetizing presentation</li>
+                        <li>Smooth hover interactions</li>
+                        <li>Professional restaurant aesthetic</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
