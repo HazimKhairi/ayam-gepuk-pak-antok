@@ -37,6 +37,9 @@ import promotionRoutes from './routes/promotions';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Trust proxy (for rate limiting behind reverse proxy/load balancer)
+app.set('trust proxy', 1);
+
 // Security headers
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow image loading from different origins
