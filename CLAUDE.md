@@ -13,14 +13,15 @@ Ramadhan Reservation System for Ayam Gepuk Pak Antok - a restaurant chain with 6
 ### Backend (Express.js + Prisma + MySQL)
 ```bash
 cd backend
-npm run dev          # Start dev server with hot reload (port 3001)
-npm run build        # Compile TypeScript
-npm start            # Run production build (from dist/)
-npm run db:generate  # Generate Prisma client after schema changes
-npm run db:migrate   # Run database migrations
-npm run db:push      # Push schema to database (dev only)
-npm run db:seed      # Seed database with initial data (WARNING: clears ALL data)
-npm run db:studio    # Open Prisma Studio GUI
+npm run dev                 # Start dev server with hot reload (port 3001)
+npm run build               # Compile TypeScript
+npm start                   # Run production build (from dist/)
+npm run db:generate         # Generate Prisma client after schema changes
+npm run db:migrate          # Run database migrations
+npm run db:push             # Push schema to database (dev only)
+npm run db:seed             # Seed database with initial data (WARNING: clears ALL data)
+npm run db:studio           # Open Prisma Studio GUI
+npm run update:sets-simple  # Update Set menu items with customization options
 ```
 
 ### Frontend (Next.js 16 + React 19 + Tailwind 4)
@@ -123,6 +124,17 @@ Base URL from `NEXT_PUBLIC_API_URL` env var (default `http://localhost:3001/api/
 - Native `alert()` for error feedback (no toast library)
 - `recharts` for admin dashboard charts, `three` for 3D elements
 
+**Menu Customization System:**
+- `CustomizationModal` component handles customization selection for menu items
+- Menu items with `hasCustomization: true` trigger modal before adding to cart
+- Customization options stored in `customizationOptions` field (JSON):
+  - `ayamType`: Chicken type selection (Crispy/Original)
+  - `sambalLevel`: Spice level (3 levels: Kurang Pedas/Sederhana/Pedas)
+  - `drink`: Beverage selection with free options and paid upgrades (+RM 5)
+- Modal validates required selections before confirming
+- Cart items store customizations in `customizations` field
+- Integrated in both home page and menu page
+
 ### Dine-in Booking (Pax-Based)
 Dine-in booking is pax-based — customers select number of guests + time slot, admin arranges tables internally.
 - **Outlet capacity**: Each outlet has `maxCapacity` (max pax per time slot). Admin can set this per outlet.
@@ -140,6 +152,7 @@ Key enums: `TableStatus` (AVAILABLE/BOOKED/OCCUPIED/MAINTENANCE), `OrderStatus` 
 - `Order` stores customer info (name/email/phone) as denormalized fields — there is no foreign key to `Customer`. The `Customer` model exists only for auth/faster checkout, not linked relationally to orders.
 - `Outlet` model includes `googleMapsUrl` field for navigation links
 - `Setting` model stores system-wide configs including social media URLs (Instagram, TikTok)
+- `MenuItem` has `hasCustomization` boolean and `customizationOptions` JSON field for menu item customization (chicken type, spice level, drinks)
 
 ## Business Logic Constraints
 
