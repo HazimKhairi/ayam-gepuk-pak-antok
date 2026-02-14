@@ -21,6 +21,7 @@ async function main() {
   await prisma.outlet.deleteMany();
   await prisma.review.deleteMany();
   await prisma.menuItem.deleteMany();
+  await prisma.category.deleteMany();
   await prisma.setting.deleteMany();
 
   // Customization options for sets with ayam + sambal + drink
@@ -74,6 +75,36 @@ async function main() {
     },
   };
 
+  // Create Categories
+  const setMenuCategory = await prisma.category.create({
+    data: {
+      name: 'Set Menu',
+      slug: 'set-menu',
+      displayOrder: 1,
+      isActive: true,
+    },
+  });
+
+  const drinksCategory = await prisma.category.create({
+    data: {
+      name: 'Drinks',
+      slug: 'drinks',
+      displayOrder: 2,
+      isActive: true,
+    },
+  });
+
+  const alaCarteCategory = await prisma.category.create({
+    data: {
+      name: 'Ala Carte',
+      slug: 'ala-carte',
+      displayOrder: 3,
+      isActive: true,
+    },
+  });
+
+  console.log('Categories created successfully');
+
   // Create Menu Items - Updated from Senarai Menu AGPA.pdf
   const menuItems = await Promise.all([
     // SET MENU
@@ -83,7 +114,7 @@ async function main() {
         description: 'Nasi, Ayam (Crispy/Original), Sambal Level 1-3, Timun, Kobis & Salad',
         price: 12.90,
         image: '/uploads/set-a.png',
-        category: 'Set Menu',
+        categoryId: setMenuCategory.id,
         ingredients: 'Nasi Putih, Ayam (Crispy/Original), Sambal Gepuk Level 1-3, Timun, Kobis & Salad Segar',
         freeItem: 'Percuma: Blue Lemon, Blackcurrent, Ice Lemon Tea (Mojito Apple/Strawberry +RM5)',
         isFeatured: true,
@@ -99,7 +130,7 @@ async function main() {
         description: 'Nasi, Ayam (Crispy/Original), Sambal Level 1-3, Timun, Tempe & Tauhu, Kobis & Salad',
         price: 13.90,
         image: '/uploads/set-b.png',
-        category: 'Set Menu',
+        categoryId: setMenuCategory.id,
         ingredients: 'Nasi Putih, Ayam (Crispy/Original), Sambal Gepuk Level 1-3, Timun, Tempe Goreng, Tauhu Goreng, Kobis & Salad',
         freeItem: 'Percuma: Blue Lemon, Blackcurrent, Ice Lemon Tea (Mojito Apple/Strawberry +RM5)',
         isFeatured: true,
@@ -115,7 +146,7 @@ async function main() {
         description: 'Nasi, Ayam (Crispy/Original), Sambal Level 1-3, Lauk Premium',
         price: 14.90,
         image: '/uploads/set-c.png',
-        category: 'Set Menu',
+        categoryId: setMenuCategory.id,
         ingredients: 'Nasi Putih, Ayam (Crispy/Original), Sambal Gepuk Level 1-3, Lauk-Lauk Premium',
         freeItem: 'Percuma: Blue Lemon, Blackcurrent, Ice Lemon Tea (Mojito Apple/Strawberry +RM5)',
         isFeatured: true,
@@ -131,7 +162,7 @@ async function main() {
         description: 'Ikan Lele Goreng Berempah dengan Sambal Level 1-3',
         price: 13.90,
         image: '/uploads/set-lele.png',
-        category: 'Set Menu',
+        categoryId: setMenuCategory.id,
         ingredients: 'Nasi Putih, Ikan Lele Goreng Berempah, Sambal Gepuk Level 1-3, Timun, Kobis & Salad',
         freeItem: 'Percuma: Blue Lemon, Blackcurrent, Ice Lemon Tea (Mojito Apple/Strawberry +RM5)',
         isFeatured: false,
@@ -147,7 +178,7 @@ async function main() {
         description: 'Bihun Soto dengan kuah berempah yang sedap dan menyelerakan',
         price: 10.00,
         image: '/uploads/bihun-soto.png',
-        category: 'Set Menu',
+        categoryId: setMenuCategory.id,
         ingredients: 'Bihun, Kuah Soto Berempah, Ayam, Sayur-Sayuran',
         freeItem: 'Percuma: Blue Lemon, Blackcurrent, Ice Lemon Tea (Mojito Apple/Strawberry +RM5)',
         isFeatured: false,
@@ -163,14 +194,13 @@ async function main() {
         description: 'Kombo Set dengan Minuman Coklat Premium',
         price: 10.90,
         image: '/uploads/coco-meal.png',
-        category: 'Set Menu',
+        categoryId: setMenuCategory.id,
         ingredients: 'Nasi, Ayam, Sambal, Coklat Premium Special',
         freeItem: 'None',
         isFeatured: true,
         rating: 5.0,
         reviewCount: 85,
         hasCustomization: false,
-        customizationOptions: null,
       },
     }),
     // ALA CARTE - DRINKS
@@ -180,7 +210,7 @@ async function main() {
         description: 'Minuman segar dengan perisa strawberry yang menyegarkan',
         price: 7.90,
         image: '/uploads/strawberry-mojito.png',
-        category: 'Drinks',
+        categoryId: drinksCategory.id,
         ingredients: 'Strawberry Fresh, Mint Leaves, Soda',
         freeItem: 'None',
         isFeatured: false,
@@ -194,7 +224,7 @@ async function main() {
         description: 'Minuman segar dengan perisa apple yang menyegarkan',
         price: 7.90,
         image: '/uploads/apple-mojito.png',
-        category: 'Drinks',
+        categoryId: drinksCategory.id,
         ingredients: 'Apple Fresh, Mint Leaves, Soda',
         freeItem: 'None',
         isFeatured: false,
@@ -208,7 +238,7 @@ async function main() {
         description: 'Minuman limau biru yang segar dan menyejukkan',
         price: 3.00,
         image: '/uploads/blue-lemon.png',
-        category: 'Drinks',
+        categoryId: drinksCategory.id,
         ingredients: 'Lemon, Blue Syrup, Ice',
         freeItem: 'None',
         isFeatured: false,
@@ -222,7 +252,7 @@ async function main() {
         description: 'Minuman blackcurrent yang segar dan menyejukkan',
         price: 3.00,
         image: '/uploads/blackcurrent.png',
-        category: 'Drinks',
+        categoryId: drinksCategory.id,
         ingredients: 'Blackcurrent Syrup, Ice',
         freeItem: 'None',
         isFeatured: false,
@@ -236,7 +266,7 @@ async function main() {
         description: 'Teh limau ais yang klasik dan menyegarkan',
         price: 3.00,
         image: '/uploads/ice-lemon-tea.png',
-        category: 'Drinks',
+        categoryId: drinksCategory.id,
         ingredients: 'Tea, Lemon, Ice',
         freeItem: 'None',
         isFeatured: false,
@@ -251,7 +281,7 @@ async function main() {
         description: 'Ayam Original sahaja (tanpa nasi)',
         price: 8.00,
         image: '/uploads/ayam-original.png',
-        category: 'Ala Carte',
+        categoryId: alaCarteCategory.id,
         ingredients: 'Ayam Original Berempah',
         freeItem: 'None',
         isFeatured: false,
@@ -265,7 +295,7 @@ async function main() {
         description: 'Ayam Crispy sahaja (tanpa nasi)',
         price: 8.00,
         image: '/uploads/ayam-crispy.png',
-        category: 'Ala Carte',
+        categoryId: alaCarteCategory.id,
         ingredients: 'Ayam Crispy Berempah',
         freeItem: 'None',
         isFeatured: false,
@@ -279,7 +309,7 @@ async function main() {
         description: 'Sup bebola panas yang sedap dan berkhasiat',
         price: 5.90,
         image: '/uploads/sup-bebola.png',
-        category: 'Ala Carte',
+        categoryId: alaCarteCategory.id,
         ingredients: 'Bebola Daging, Kuah Sup, Sayur-Sayuran',
         freeItem: 'None',
         isFeatured: false,
@@ -293,7 +323,7 @@ async function main() {
         description: 'Pedal atau Hati Ayam Goreng (3 keping)',
         price: 3.00,
         image: '/uploads/pedal-hati.png',
-        category: 'Ala Carte',
+        categoryId: alaCarteCategory.id,
         ingredients: 'Pedal/Hati Ayam Goreng Berempah',
         freeItem: 'None',
         isFeatured: false,
@@ -307,7 +337,7 @@ async function main() {
         description: 'Kobis goreng yang sedap dan rangup',
         price: 3.00,
         image: '/uploads/kobis-goreng.png',
-        category: 'Ala Carte',
+        categoryId: alaCarteCategory.id,
         ingredients: 'Kobis Segar Digoreng',
         freeItem: 'None',
         isFeatured: false,
@@ -321,7 +351,7 @@ async function main() {
         description: 'Bergedil kentang yang lembut dan sedap (4 biji)',
         price: 5.00,
         image: '/uploads/bergedil.png',
-        category: 'Ala Carte',
+        categoryId: alaCarteCategory.id,
         ingredients: 'Kentang, Bawang, Rempah Ratus',
         freeItem: 'None',
         isFeatured: false,
@@ -331,7 +361,7 @@ async function main() {
     }),
   ]);
 
-  console.log(\`✅ Created \${menuItems.length} menu items\`);
+  console.log(`✅ Created ${menuItems.length} menu items`);
 
   // Create 6 outlets with updated information from Client_New_Information.md
   const outlets = await Promise.all([
@@ -415,7 +445,7 @@ async function main() {
     }),
   ]);
 
-  console.log(\`✅ Created \${outlets.length} outlets\`);
+  console.log(`✅ Created ${outlets.length} outlets`);
 
   // Create tables for each outlet (12 tables per outlet for internal admin use)
   const tableConfigs = [
@@ -444,7 +474,7 @@ async function main() {
     }
   }
 
-  console.log(\`✅ Created \${tableConfigs.length * outlets.length} tables\`);
+  console.log(`✅ Created ${tableConfigs.length * outlets.length} tables`);
 
   // Create time slots for each outlet (Takeaway hours: 14:00-23:00 initially, can extend to 00:00)
   // Booking window for dine-in: 10:00-17:00 (handled by outlet openTime/closeTime)
@@ -467,7 +497,7 @@ async function main() {
     }
   }
 
-  console.log(\`✅ Created \${timeSlots.length * outlets.length} time slots\`);
+  console.log(`✅ Created ${timeSlots.length * outlets.length} time slots`);
 
   // Create master admin with properly hashed password
   const hashedAdminPassword = await bcrypt.hash('Admin@123', 12);

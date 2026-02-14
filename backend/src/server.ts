@@ -33,6 +33,7 @@ import authRoutes from './routes/auth';
 import uploadRoutes from './routes/upload';
 import reviewRoutes from './routes/reviews';
 import promotionRoutes from './routes/promotions';
+import categoryRoutes from './routes/categories';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -97,6 +98,7 @@ app.get('/health', async (req, res) => {
 app.use('/api/v1/outlets', outletRoutes);
 app.use('/api/v1/reservations', reservationRoutes);
 app.use('/api/v1/menu', menuRoutes);
+app.use('/api/v1/categories', categoryRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/auth', authLimiter, authRoutes);

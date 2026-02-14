@@ -1,44 +1,109 @@
 #!/bin/bash
-# Deployment script for Ayam Gepuk Pak Antok to VPS
 
-VPS_HOST="72.62.243.23"
-VPS_USER="root"
-PROJECT_DIR="/var/www/ayam-gepuk-pak-antok"
+# Ayam Gepuk Pak Antok - Deployment Script
+# Usage: ./deploy.sh [backend|frontend|all]
 
-echo "🚀 Starting deployment to VPS..."
+set -e
 
-# SSH into VPS and run deployment commands
-ssh -o StrictHostKeyChecking=no ${VPS_USER}@${VPS_HOST} << 'ENDSSH'
-    set -e
+DEPLOY_TARGET=${1:-all}
 
-    echo "📂 Navigating to project directory..."
-    cd /var/www/ayam-gepuk-pak-antok 2>/dev/null || cd /home/ayam-gepuk* 2>/dev/null || cd /root/ayam-gepuk* 2>/dev/null || {
-        echo "❌ Project directory not found!"
-        echo "Available directories:"
-        find /var/www /home /root -maxdepth 2 -type d -name "*ayam*" 2>/dev/null
-        exit 1
-    }
+echo "🚀 Starting deployment for: $DEPLOY_TARGET"
 
-    echo "📥 Pulling latest changes from Git..."
-    git pull origin main
+# Colors
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
 
-    echo "📦 Installing backend dependencies..."
+# Function to print colored output
+print_status() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+# Deploy Backend
+deploy_backend() {
+    print_status "Deploying backend..."
+
     cd backend
-    npm install
 
-    echo "🔨 Building backend..."
+    # Install dependencies
+    print_status "Installing backend dependencies..."
+    npm install --production=false
+
+    # Generate Prisma client
+    print_status "Generating Prisma client..."
+    npm run db:generate
+
+    # Run migrations
+    print_status "Running database migrations..."
+    npm run db:migrate
+
+    # Build TypeScript
+    print_status "Building backend..."
     npm run build
 
-    echo "🔄 Restarting PM2 processes..."
-    pm2 restart all
+    # Restart PM2
+    print_status "Restarting backend service..."
+    pm2 restart agpa-backend || pm2 start dist/src/server.js --name agpa-backend
 
-    echo "✅ Deployment completed successfully!"
-    echo ""
-    echo "📊 PM2 Status:"
-    pm2 list
+    cd ..
+    print_status "Backend deployment complete!"
+}
 
-ENDSSH
+# Deploy Frontend
+deploy_frontend() {
+    print_status "Deploying frontend..."
+
+    cd frontend
+
+    # Install dependencies
+    print_status "Installing frontend dependencies..."
+    npm install
+
+    # Build Next.js
+    print_status "Building frontend..."
+    npm run build
+
+    # Restart PM2
+    print_status "Restarting frontend service..."
+    pm2 restart agpa-frontend || pm2 start "serve out -l 3000" --name agpa-frontend
+
+    cd ..
+    print_status "Frontend deployment complete!"
+}
+
+# Main deployment logic
+case $DEPLOY_TARGET in
+    backend)
+        deploy_backend
+        ;;
+    frontend)
+        deploy_frontend
+        ;;
+    all)
+        deploy_backend
+        deploy_frontend
+        ;;
+    *)
+        print_error "Invalid target: $DEPLOY_TARGET"
+        echo "Usage: ./deploy.sh [backend|frontend|all]"
+        exit 1
+        ;;
+esac
+
+# Show PM2 status
+echo ""
+print_status "Current PM2 status:"
+pm2 status
 
 echo ""
-echo "🎉 Deployment finished!"
-echo "🌐 Visit your website to verify the changes."
+print_status "🎉 Deployment completed successfully!"
+print_warning "Don't forget to check the logs: pm2 logs"

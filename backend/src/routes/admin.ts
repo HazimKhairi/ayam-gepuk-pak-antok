@@ -155,8 +155,43 @@ router.get('/orders', async (req, res) => {
       prisma.order.count({ where }),
     ]);
 
+    // Enrich orderItems with menu item images
+    const enrichedOrders = await Promise.all(
+      orders.map(async (order) => {
+        if (order.orderItems && Array.isArray(order.orderItems)) {
+          const menuItemNames = order.orderItems.map((item: any) => item.menuItemName);
+
+          // Fetch menu items for this order
+          const menuItems = await prisma.menuItem.findMany({
+            where: {
+              name: { in: menuItemNames },
+            },
+            select: {
+              name: true,
+              image: true,
+            },
+          });
+
+          // Create a map for quick lookup
+          const menuItemMap = new Map(menuItems.map((item) => [item.name, item.image]));
+
+          // Add image to each order item
+          const enrichedItems = order.orderItems.map((item: any) => ({
+            ...item,
+            menuItemImage: menuItemMap.get(item.menuItemName) || '',
+          }));
+
+          return {
+            ...order,
+            orderItems: enrichedItems,
+          };
+        }
+        return order;
+      })
+    );
+
     res.json({
-      orders,
+      orders: enrichedOrders,
       pagination: {
         page: parseInt(page as string),
         limit: parseInt(limit as string),

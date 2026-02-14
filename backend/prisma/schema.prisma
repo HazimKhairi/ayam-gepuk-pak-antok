@@ -220,25 +220,41 @@ model Customer {
   @@map("customers")
 }
 
+// Category model - menu categories
+model Category {
+  id           String     @id @default(uuid())
+  name         String     @unique @db.VarChar(50) // e.g. "Set Menu", "Ala Carte", "Drinks"
+  slug         String     @unique @db.VarChar(50) // URL-friendly version e.g. "set-menu"
+  displayOrder Int        @default(0) // For sorting categories
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  menuItems    MenuItem[] // One category has many menu items
+
+  @@map("categories")
+}
+
 // MenuItem model - dynamic menu items
 model MenuItem {
-  id                   String   @id @default(uuid())
-  name                 String   @db.VarChar(100)
-  description          String   @db.VarChar(255)
-  price                Decimal  @db.Decimal(10, 2)
-  image                String   @db.VarChar(255) // URL or path
-  category             String   @db.VarChar(50) // e.g. "Set Menu", "Ala Carte"
-  ingredients          String?  @db.Text // JSON string or comma-separated
-  freeItem             String?  @db.VarChar(100)
-  isFeatured           Boolean  @default(false)
-  isActive             Boolean  @default(true)
-  rating               Decimal  @db.Decimal(2, 1) @default(5.0)
-  reviewCount          Int      @default(0)
-  hasCustomization     Boolean  @default(false)
-  customizationOptions Json?    // Stores customization config (ayamType, sambalLevel, drink)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                   String    @id @default(uuid())
+  name                 String    @db.VarChar(100)
+  description          String    @db.VarChar(255)
+  price                Decimal   @db.Decimal(10, 2)
+  image                String    @db.VarChar(255) // URL or path
+  categoryId           String    // Foreign key to Category
+  category             Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  ingredients          String?   @db.Text // JSON string or comma-separated
+  freeItem             String?   @db.VarChar(100)
+  isFeatured           Boolean   @default(false)
+  isActive             Boolean   @default(true)
+  rating               Decimal   @db.Decimal(2, 1) @default(5.0)
+  reviewCount          Int       @default(0)
+  hasCustomization     Boolean   @default(false)
+  customizationOptions Json?     // Stores customization config (ayamType, sambalLevel, drink)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
+  @@index([categoryId])
   @@map("menu_items")
 }
 

@@ -7,18 +7,30 @@ const router = Router();
 // Get all menu items
 router.get('/', async (req, res) => {
   try {
-    const { category } = req.query;
-    
+    const { category, categoryId } = req.query;
+
     const where: any = {
       isActive: true,
     };
 
-    if (category) {
-      where.category = category as string;
+    // Support filtering by category slug (backward compatible) or categoryId
+    if (categoryId) {
+      where.categoryId = categoryId as string;
+    } else if (category) {
+      // Find category by slug for backward compatibility
+      const categoryRecord = await prisma.category.findUnique({
+        where: { slug: category as string },
+      });
+      if (categoryRecord) {
+        where.categoryId = categoryRecord.id;
+      }
     }
 
     const menuItems = await prisma.menuItem.findMany({
       where,
+      include: {
+        category: true, // Include category details
+      },
       orderBy: {
         name: 'asc',
       },
@@ -34,6 +46,9 @@ router.get('/', async (req, res) => {
 router.get('/all', async (req, res) => {
   try {
     const menuItems = await prisma.menuItem.findMany({
+      include: {
+        category: true, // Include category details
+      },
       orderBy: {
         name: 'asc',
       },
@@ -86,18 +101,25 @@ router.get('/:id', async (req, res) => {
 // POST /api/v1/menu (Admin - create menu item)
 router.post('/', async (req, res) => {
   try {
-    const { name, description, price, category, image, ingredients, isActive, isFeatured } = req.body;
+    const { name, description, price, categoryId, image, ingredients, isActive, isFeatured } = req.body;
+
+    if (!categoryId) {
+      return res.status(400).json({ error: 'Category ID is required' });
+    }
 
     const menuItem = await prisma.menuItem.create({
       data: {
         name,
         description,
         price,
-        category,
+        categoryId,
         image: image || '',
         ingredients: ingredients || '',
         isActive: isActive !== undefined ? isActive : true,
         isFeatured: isFeatured || false,
+      },
+      include: {
+        category: true,
       },
     });
 
@@ -110,7 +132,7 @@ router.post('/', async (req, res) => {
 // PUT /api/v1/menu/:id (Admin - update menu item)
 router.put('/:id', async (req, res) => {
   try {
-    const { name, description, price, category, image, ingredients, isActive, isFeatured } = req.body;
+    const { name, description, price, categoryId, image, ingredients, isActive, isFeatured } = req.body;
 
     const menuItem = await prisma.menuItem.update({
       where: { id: req.params.id },
@@ -118,11 +140,14 @@ router.put('/:id', async (req, res) => {
         ...(name && { name }),
         ...(description !== undefined && { description }),
         ...(price !== undefined && { price }),
-        ...(category && { category }),
+        ...(categoryId && { categoryId }),
         ...(image !== undefined && { image }),
         ...(ingredients !== undefined && { ingredients }),
         ...(isActive !== undefined && { isActive }),
         ...(isFeatured !== undefined && { isFeatured }),
+      },
+      include: {
+        category: true,
       },
     });
 
