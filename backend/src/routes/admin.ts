@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { requireAdmin } from '../middlewares/auth';
 
