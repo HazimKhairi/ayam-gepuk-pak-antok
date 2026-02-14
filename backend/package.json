@@ -12,7 +12,8 @@
     "db:push": "prisma db push",
     "db:seed": "ts-node prisma/seed.ts",
     "db:studio": "prisma studio",
-    "migrate:customization": "ts-node scripts/add-customization-to-menu.ts"
+    "migrate:customization": "ts-node scripts/add-customization-to-menu.ts",
+    "update:sets": "ts-node scripts/update-all-sets.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",
