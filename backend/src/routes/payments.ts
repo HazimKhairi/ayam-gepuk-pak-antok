@@ -54,18 +54,14 @@ router.post('/callback', async (req, res) => {
     if (paymentStatus === 'SUCCESS') {
       await prisma.order.update({
         where: { id: payment.orderId },
-        data: { status: 'CONFIRMED' },
+        data: { status: 'COMPLETED' },
       });
 
       // Send confirmation email (non-blocking)
-      sendConfirmationEmail(payment.order).catch(err =>
-        console.error('Failed to send confirmation email:', err)
-      );
+      sendConfirmationEmail(payment.order).catch(() => {});
 
       // Schedule reminder (non-blocking)
-      scheduleReminder(payment.order).catch(err =>
-        console.error('Failed to schedule reminder:', err)
-      );
+      scheduleReminder(payment.order).catch(() => {});
     } else if (paymentStatus === 'FAILED') {
       await prisma.order.update({
         where: { id: payment.orderId },
@@ -83,7 +79,6 @@ router.post('/callback', async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Error processing payment callback:', error);
     res.status(500).json({ error: 'Failed to process callback' });
   }
 });
@@ -106,8 +101,72 @@ router.get('/status/:billCode', async (req, res) => {
 
     res.json({ status: payment.status, order: payment.order });
   } catch (error) {
-    console.error('Error checking payment status:', error);
     res.status(500).json({ error: 'Failed to check status' });
+  }
+});
+
+// POST /api/v1/payments/complete/:orderNo - Manual payment completion for testing
+router.post('/complete/:orderNo', async (req, res) => {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { orderNo: req.params.orderNo },
+      include: {
+        payment: true,
+        outlet: true,
+        table: true,
+        timeSlot: true,
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (!order.payment) {
+      return res.status(404).json({ error: 'Payment record not found' });
+    }
+
+    // Prevent duplicate processing
+    if (order.payment.status === 'SUCCESS') {
+      return res.json({ success: true, message: 'Payment already completed', order });
+    }
+
+    // Update payment status
+    await prisma.payment.update({
+      where: { id: order.payment.id },
+      data: {
+        status: 'SUCCESS',
+        paidAt: new Date(),
+        transactionId: `MANUAL_${Date.now()}`,
+      },
+    });
+
+    // Update order status to COMPLETED
+    const updatedOrder = await prisma.order.update({
+      where: { id: order.id },
+      data: { status: 'COMPLETED' },
+      include: {
+        outlet: true,
+        table: true,
+        timeSlot: true,
+        payment: true,
+      },
+    });
+
+    // Send confirmation email (non-blocking)
+    sendConfirmationEmail(updatedOrder).catch(() => {});
+
+    // Schedule reminder (non-blocking)
+    scheduleReminder(updatedOrder).catch(() => {});
+
+    res.json({
+      success: true,
+      message: 'Payment completed successfully',
+      order: updatedOrder
+    });
+  } catch (error) {
+    console.error('Manual payment completion error:', error);
+    res.status(500).json({ error: 'Failed to complete payment' });
   }
 });
 

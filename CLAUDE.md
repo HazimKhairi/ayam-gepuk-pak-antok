@@ -63,12 +63,14 @@ Auth routes get a stricter rate limiter: 10 attempts per 15 minutes.
 - `/menu` - Menu CRUD with category filtering, featured items (max 3)
 - `/upload` - Multer image upload (5MB limit, images only → `public/uploads/`)
 - `/reviews` - Celebrity testimonials (read-only)
+- `/promotions` - Promotion management
 
 **Key backend files:**
 - `backend/src/middlewares/auth.ts` - JWT auth: `generateAdminToken`, `generateCustomerToken`, `requireAdmin`, `requireMaster`, `optionalCustomerAuth`
 - `backend/src/config/prisma.ts` - PrismaClient singleton
 - `backend/src/utils/toyyibpay.ts` - Payment bill creation; auto-falls back to mock sandbox mode when credentials are placeholder values
 - `backend/src/utils/email.ts` - Nodemailer confirmation emails + 1-hour reminder scheduling
+- `backend/src/utils/cleanupOrders.ts` - Auto-cleanup of abandoned orders on server startup
 - `backend/prisma/seed.ts` - Seeds 6 outlets with Google Maps URLs, 12 tables per outlet, time slots (dine-in: 10am-5pm, takeaway: 2pm-11pm), master admin, 17 menu items, reviews, and system settings including social media links
 
 **Input validation:** Backend uses `zod` for request body validation.
@@ -83,7 +85,7 @@ Auth routes get a stricter rate limiter: 10 attempts per 15 minutes.
 
 ### Frontend
 
-**Next.js config:** React Compiler enabled (`reactCompiler: true`), Turbopack for dev, remote images only from `localhost:3001` with `dangerouslyAllowSVG` and `unoptimized` set to true.
+**Next.js config:** Static export mode (`output: 'export'`), React Compiler enabled (`reactCompiler: true`), Turbopack for dev, remote images from `localhost:3001` and production domains with `dangerouslyAllowSVG` and `unoptimized` set to true, `trailingSlash: true`.
 
 **Path alias:** `@/*` maps to `./src/*`
 
@@ -179,7 +181,8 @@ Frontend `.env.local`:
 
 - `jwt.sign()` with newer `@types/jsonwebtoken` needs `as jwt.SignOptions` cast
 - `next build` must run from `frontend/` directory specifically
-- Promotions route exists in codebase (`backend/src/routes/promotions.ts`) but is not registered in `server.ts` — add `app.use('/api/v1/promotions', promotionRoutes)` if enabling
 - Fonts are Bebas Neue and Outfit via `next/font/google` — do not add font imports via `<link>` tags or CSS `@import`
 - **NO GRADIENTS allowed** - client preference is solid colors only for professional look
 - User speaks Malay (Bahasa Melayu) but documentation should remain in English
+- Frontend is configured for static export (`output: 'export'`) - dynamic features requiring server runtime must use client-side data fetching
+- Server auto-cleans abandoned orders on startup via `cleanupOrders.ts`
