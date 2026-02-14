@@ -34,10 +34,11 @@ export const createBill = async (order: Order, paymentId: string): Promise<BillR
   try {
     // Check if credentials are placeholders or missing
     const isPlaceholder = (value: string) => {
-      return !value || 
-             value.includes('your_') || 
-             value.includes('_here') || 
-             value === 'your_secret_key_here' || 
+      return !value ||
+             value === 'placeholder' ||
+             value.includes('your_') ||
+             value.includes('_here') ||
+             value === 'your_secret_key_here' ||
              value === 'your_category_code_here';
     };
 
@@ -87,6 +88,7 @@ export const createBill = async (order: Order, paymentId: string): Promise<BillR
 
     if (response.data && response.data[0]?.BillCode) {
       const billCode = response.data[0].BillCode;
+      console.log('✅ ToyyibPay bill created:', billCode);
       return {
         success: true,
         billCode,
@@ -94,13 +96,13 @@ export const createBill = async (order: Order, paymentId: string): Promise<BillR
       };
     }
 
-    console.error('ToyyibPay error:', response.data);
+    console.error('❌ ToyyibPay API response:', JSON.stringify(response.data));
     return {
       success: false,
       error: `Failed to create bill: ${JSON.stringify(response.data)}`,
     };
   } catch (error: any) {
-    console.error('ToyyibPay API error:', error.message);
+    console.error('❌ ToyyibPay error:', error.response?.data || error.message);
     return {
       success: false,
       error: error.message,
@@ -135,7 +137,6 @@ export const getBillTransactions = async (billCode: string) => {
       transactions: response.data,
     };
   } catch (error: any) {
-    console.error('ToyyibPay transaction check error:', error.message);
     return {
       success: false,
       error: error.message,

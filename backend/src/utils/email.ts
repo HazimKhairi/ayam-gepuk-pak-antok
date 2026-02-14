@@ -167,10 +167,8 @@ export const sendConfirmationEmail = async (order: Order): Promise<boolean> => {
       html,
     });
 
-    console.log(`📧 Confirmation email sent to ${order.customerEmail}`);
     return true;
   } catch (error) {
-    console.error('Failed to send confirmation email:', error);
     return false;
   }
 };
@@ -210,8 +208,6 @@ export const scheduleReminder = async (order: Order): Promise<void> => {
     setTimeout(async () => {
       await sendReminderEmail(order);
     }, delay);
-    
-    console.log(`⏰ Reminder scheduled for ${reminderTime.toISOString()}`);
   }
 };
 
@@ -270,10 +266,8 @@ const sendReminderEmail = async (order: Order): Promise<boolean> => {
       html,
     });
 
-    console.log(`📧 Reminder email sent to ${order.customerEmail}`);
     return true;
   } catch (error) {
-    console.error('Failed to send reminder email:', error);
     return false;
   }
 };

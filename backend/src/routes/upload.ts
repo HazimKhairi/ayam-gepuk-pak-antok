@@ -6,7 +6,7 @@ import fs from 'fs';
 const router = Router();
 
 // Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, '../../public/uploads');
+const uploadsDir = path.join(process.cwd(), 'public/uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -43,12 +43,8 @@ router.post('/image', (req, res) => {
   // Use multer middleware with error handling
   upload.single('image')(req, res, (err) => {
     try {
-      console.log('📤 [UPLOAD] Received upload request');
-
       // Handle multer errors
       if (err instanceof multer.MulterError) {
-        console.error('❌ [UPLOAD] Multer error:', err.code, err.message);
-
         if (err.code === 'LIMIT_FILE_SIZE') {
           return res.status(400).json({
             error: 'File too large. Maximum file size is 10MB.'
@@ -58,29 +54,17 @@ router.post('/image', (req, res) => {
           error: `Upload error: ${err.message}`
         });
       } else if (err) {
-        console.error('❌ [UPLOAD] File filter error:', err.message);
         return res.status(400).json({ error: err.message });
       }
 
       if (!req.file) {
-        console.error('❌ [UPLOAD] No file in request');
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      console.log('📤 [UPLOAD] File received:', {
-        originalname: req.file.originalname,
-        filename: req.file.filename,
-        mimetype: req.file.mimetype,
-        size: req.file.size,
-        path: req.file.path
-      });
-
       // Return the URL path to the uploaded file
       const imageUrl = `/uploads/${req.file.filename}`;
-      console.log('✅ [UPLOAD] Upload successful! Returning URL:', imageUrl);
       res.json({ url: imageUrl });
     } catch (error) {
-      console.error('❌ [UPLOAD] Error uploading image:', error);
       res.status(500).json({ error: 'Failed to upload image' });
     }
   });

@@ -5,6 +5,7 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import prisma from './config/prisma';
+import { cleanupOnStartup } from './utils/cleanupOrders';
 
 // Load environment variables
 dotenv.config();
@@ -107,14 +108,18 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err.message);
   res.status(500).json({ error: 'Internal server error' });
 });
 
 // Start server
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+
+  // Cleanup abandoned orders on startup
+  await cleanupOnStartup().catch(err => {
+    console.error('Failed to run cleanup on startup:', err);
+  });
 });
 
 // Graceful shutdown

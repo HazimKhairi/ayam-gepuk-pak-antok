@@ -30,7 +30,6 @@ router.get('/active', async (req, res) => {
 
     res.json(promotion);
   } catch (error) {
-    console.error('Failed to fetch active promotion:', error);
     res.status(500).json({ error: 'Failed to fetch promotion' });
   }
 });
@@ -43,7 +42,6 @@ router.get('/', async (req, res) => {
     });
     res.json(promotions);
   } catch (error) {
-    console.error('Failed to fetch promotions:', error);
     res.status(500).json({ error: 'Failed to fetch promotions' });
   }
 });
@@ -62,7 +60,6 @@ router.get('/:id', async (req, res) => {
 
     res.json(promotion);
   } catch (error) {
-    console.error('Failed to fetch promotion:', error);
     res.status(500).json({ error: 'Failed to fetch promotion' });
   }
 });
@@ -91,7 +88,6 @@ router.post('/', async (req, res) => {
 
     res.status(201).json(promotion);
   } catch (error) {
-    console.error('Failed to create promotion:', error);
     res.status(500).json({ error: 'Failed to create promotion' });
   }
 });
@@ -118,7 +114,6 @@ router.put('/:id', async (req, res) => {
 
     res.json(promotion);
   } catch (error) {
-    console.error('Failed to update promotion:', error);
     res.status(500).json({ error: 'Failed to update promotion' });
   }
 });
@@ -134,7 +129,6 @@ router.delete('/:id', async (req, res) => {
 
     res.json({ message: 'Promotion deleted successfully' });
   } catch (error) {
-    console.error('Failed to delete promotion:', error);
     res.status(500).json({ error: 'Failed to delete promotion' });
   }
 });

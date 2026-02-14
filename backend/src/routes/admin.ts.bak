@@ -68,6 +68,7 @@ router.get('/dashboard', async (req, res) => {
       recentOrders,
     });
   } catch (error) {
+    console.error('Error fetching dashboard:', error);
     res.status(500).json({ error: 'Failed to fetch dashboard' });
   }
 });
@@ -123,6 +124,7 @@ router.get('/sales', async (req, res) => {
       totalOrders: orders.length,
     });
   } catch (error) {
+    console.error('Error fetching sales:', error);
     res.status(500).json({ error: 'Failed to fetch sales' });
   }
 });
@@ -165,6 +167,7 @@ router.get('/orders', async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('Error fetching orders:', error);
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
@@ -187,6 +190,7 @@ router.put('/orders/:id/status', async (req, res) => {
 
     res.json(order);
   } catch (error) {
+    console.error('Error updating order status:', error);
     res.status(500).json({ error: 'Failed to update order' });
   }
 });
@@ -226,6 +230,7 @@ router.get('/outlets', async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('Error fetching outlets:', error);
     res.status(500).json({ error: 'Failed to fetch outlets' });
   }
 });
@@ -276,6 +281,7 @@ router.post('/outlets', async (req: Request, res: Response) => {
 
     res.status(201).json(outlet);
   } catch (error) {
+    console.error('Error creating outlet:', error);
     res.status(500).json({ error: 'Failed to create outlet' });
   }
 });
@@ -330,6 +336,7 @@ router.put('/outlets/:id', async (req: Request, res: Response) => {
 
     res.json(outlet);
   } catch (error) {
+    console.error('Error updating outlet:', error);
     res.status(500).json({ error: 'Failed to update outlet' });
   }
 });
@@ -344,6 +351,7 @@ router.get('/tables/:outletId', async (req, res) => {
 
     res.json(tables);
   } catch (error) {
+    console.error('Error fetching tables:', error);
     res.status(500).json({ error: 'Failed to fetch tables' });
   }
 });
@@ -373,6 +381,7 @@ router.post('/tables', async (req, res) => {
 
     res.status(201).json(table);
   } catch (error) {
+    console.error('Error creating table:', error);
     res.status(500).json({ error: 'Failed to create table' });
   }
 });
@@ -394,6 +403,7 @@ router.put('/tables/:id', async (req, res) => {
 
     res.json(table);
   } catch (error) {
+    console.error('Error updating table:', error);
     res.status(500).json({ error: 'Failed to update table' });
   }
 });
@@ -423,6 +433,7 @@ router.delete('/tables/:id', async (req, res) => {
 
     res.json({ success: true, message: 'Table deleted successfully' });
   } catch (error) {
+    console.error('Error deleting table:', error);
     res.status(500).json({ error: 'Failed to delete table' });
   }
 });
@@ -443,6 +454,7 @@ router.put('/slots/:id', async (req, res) => {
 
     res.json(slot);
   } catch (error) {
+    console.error('Error updating time slot:', error);
     res.status(500).json({ error: 'Failed to update time slot' });
   }
 });
@@ -498,6 +510,7 @@ router.post('/slots', async (req: Request, res: Response) => {
 
     res.status(201).json(slot);
   } catch (error) {
+    console.error('Error creating time slot:', error);
     res.status(500).json({ error: 'Failed to create time slot' });
   }
 });
@@ -539,6 +552,7 @@ router.delete('/slots/:id', async (req: Request, res: Response) => {
 
     res.json({ message: 'Time slot deleted successfully' });
   } catch (error) {
+    console.error('Error deleting time slot:', error);
     res.status(500).json({ error: 'Failed to delete time slot' });
   }
 });

@@ -23,6 +23,57 @@ async function main() {
   await prisma.menuItem.deleteMany();
   await prisma.setting.deleteMany();
 
+  // Customization options for sets with ayam + sambal + drink
+  const fullCustomizationOptions = {
+    ayamType: {
+      label: 'Pilih Jenis Ayam',
+      required: true,
+      options: [
+        { value: 'crispy', label: 'Crispy', priceModifier: 0 },
+        { value: 'original', label: 'Original', priceModifier: 0 },
+      ],
+    },
+    sambalLevel: {
+      label: 'Pilih Level Sambal',
+      required: true,
+      options: [
+        { value: '1', label: 'Level 1', priceModifier: 0 },
+        { value: '2', label: 'Level 2', priceModifier: 0 },
+        { value: '3', label: 'Level 3', priceModifier: 0 },
+      ],
+    },
+    drink: {
+      label: 'Pilih Minuman',
+      required: true,
+      freeOptions: [
+        { value: 'blue-lemon', label: 'Blue Lemon Ice', priceModifier: 0 },
+        { value: 'blackcurrent', label: 'Blackcurrent Ice', priceModifier: 0 },
+        { value: 'ice-lemon-tea', label: 'Ice Lemon Tea', priceModifier: 0 },
+      ],
+      upgradeOptions: [
+        { value: 'mojito-apple', label: 'Mojito Apple', priceModifier: 5 },
+        { value: 'mojito-strawberry', label: 'Strawberry Mojito', priceModifier: 5 },
+      ],
+    },
+  };
+
+  // Customization options for Set Bihun Soto (drink only)
+  const drinkOnlyCustomization = {
+    drink: {
+      label: 'Pilih Minuman',
+      required: true,
+      freeOptions: [
+        { value: 'blue-lemon', label: 'Blue Lemon Ice', priceModifier: 0 },
+        { value: 'blackcurrent', label: 'Blackcurrent Ice', priceModifier: 0 },
+        { value: 'ice-lemon-tea', label: 'Ice Lemon Tea', priceModifier: 0 },
+      ],
+      upgradeOptions: [
+        { value: 'mojito-apple', label: 'Mojito Apple', priceModifier: 5 },
+        { value: 'mojito-strawberry', label: 'Strawberry Mojito', priceModifier: 5 },
+      ],
+    },
+  };
+
   // Create Menu Items - Updated from Senarai Menu AGPA.pdf
   const menuItems = await Promise.all([
     // SET MENU
@@ -38,6 +89,8 @@ async function main() {
         isFeatured: true,
         rating: 4.8,
         reviewCount: 342,
+        hasCustomization: true,
+        customizationOptions: fullCustomizationOptions,
       },
     }),
     prisma.menuItem.create({
@@ -52,6 +105,8 @@ async function main() {
         isFeatured: true,
         rating: 4.9,
         reviewCount: 215,
+        hasCustomization: true,
+        customizationOptions: fullCustomizationOptions,
       },
     }),
     prisma.menuItem.create({
@@ -66,6 +121,8 @@ async function main() {
         isFeatured: true,
         rating: 4.9,
         reviewCount: 180,
+        hasCustomization: true,
+        customizationOptions: fullCustomizationOptions,
       },
     }),
     prisma.menuItem.create({
@@ -80,6 +137,8 @@ async function main() {
         isFeatured: false,
         rating: 4.7,
         reviewCount: 95,
+        hasCustomization: true,
+        customizationOptions: fullCustomizationOptions,
       },
     }),
     prisma.menuItem.create({
@@ -90,10 +149,12 @@ async function main() {
         image: '/uploads/bihun-soto.png',
         category: 'Set Menu',
         ingredients: 'Bihun, Kuah Soto Berempah, Ayam, Sayur-Sayuran',
-        freeItem: 'None',
+        freeItem: 'Percuma: Blue Lemon, Blackcurrent, Ice Lemon Tea (Mojito Apple/Strawberry +RM5)',
         isFeatured: false,
         rating: 4.6,
         reviewCount: 120,
+        hasCustomization: true,
+        customizationOptions: drinkOnlyCustomization,
       },
     }),
     prisma.menuItem.create({
@@ -108,6 +169,8 @@ async function main() {
         isFeatured: true,
         rating: 5.0,
         reviewCount: 85,
+        hasCustomization: false,
+        customizationOptions: null,
       },
     }),
     // ALA CARTE - DRINKS

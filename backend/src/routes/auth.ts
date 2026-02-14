@@ -26,7 +26,6 @@ router.get('/check-email', async (req, res) => {
     const existing = await prisma.customer.findUnique({ where: { email } });
     res.json({ available: !existing });
   } catch (error) {
-    console.error('Check email error:', error);
     res.status(500).json({ error: 'Failed to check email' });
   }
 });
@@ -41,7 +40,6 @@ router.get('/check-phone', async (req, res) => {
     const existing = await prisma.customer.findUnique({ where: { phone } });
     res.json({ available: !existing });
   } catch (error) {
-    console.error('Check phone error:', error);
     res.status(500).json({ error: 'Failed to check phone' });
   }
 });
@@ -89,7 +87,6 @@ router.post('/register', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Registration error:', error);
     res.status(500).json({ error: 'Failed to register' });
   }
 });
@@ -126,7 +123,6 @@ router.post('/login', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Login error:', error);
     res.status(500).json({ error: 'Failed to login' });
   }
 });
@@ -164,7 +160,6 @@ router.post('/admin/login', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Admin login error:', error);
     res.status(500).json({ error: 'Failed to login' });
   }
 });

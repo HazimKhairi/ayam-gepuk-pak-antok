@@ -6,11 +6,15 @@ import { sendConfirmationEmail } from '../utils/email';
 import { parseAndValidateBookingDate, isTimeWithinOutletHours } from '../utils/dateValidation';
 import { optionalCustomerAuth } from '../middlewares/auth';
 import type { Request, Response } from 'express';
+import type { OrderItem, OrderItemCustomizations } from '../types/menu';
 
 const router = Router();
 
 // SST rate (6%)
 const SST_RATE = 0.06;
+
+// Booking fee (RM1)
+const BOOKING_FEE = 1.00;
 
 // Generate order number
 const generateOrderNo = () => {
@@ -21,42 +25,85 @@ const generateOrderNo = () => {
 };
 
 /**
- * Server-side price calculation from cart items.
+ * Server-side price calculation from cart items with customizations.
  * Looks up actual prices from DB to prevent client-side manipulation.
  */
-async function calculateServerTotals(items: { id: string; quantity: number }[], deliveryFee: number = 0) {
+async function calculateServerTotals(
+  items: { id: string; quantity: number; customizations?: OrderItemCustomizations }[],
+  deliveryFee: number = 0
+) {
   if (!items || items.length === 0) {
-    return { subtotal: 0, sst: 0, deliveryFee: parseFloat(deliveryFee.toFixed(2)), total: parseFloat(deliveryFee.toFixed(2)) };
+    return {
+      subtotal: 0,
+      sst: 0,
+      bookingFee: BOOKING_FEE,
+      deliveryFee: parseFloat(deliveryFee.toFixed(2)),
+      total: parseFloat((BOOKING_FEE + deliveryFee).toFixed(2)),
+      orderItems: [],
+    };
   }
 
   const menuItemIds = items.map(i => i.id);
   const menuItems = await prisma.menuItem.findMany({
     where: { id: { in: menuItemIds }, isActive: true },
-    select: { id: true, price: true },
+    select: { id: true, name: true, price: true, hasCustomization: true, customizationOptions: true },
   });
 
-  const priceMap = new Map(menuItems.map(m => [m.id, Number(m.price)]));
-
+  const menuItemMap = new Map(menuItems.map(m => [m.id, m]));
+  const orderItems: OrderItem[] = [];
   let subtotal = 0;
+
   for (const item of items) {
-    const price = priceMap.get(item.id);
-    if (price === undefined) {
+    const menuItem = menuItemMap.get(item.id);
+    if (!menuItem) {
       throw new Error(`Some items in your cart are no longer available. Please clear your cart and re-add items from the menu.`);
     }
     if (item.quantity < 1 || item.quantity > 100) {
       throw new Error(`Invalid quantity for item ${item.id}`);
     }
-    subtotal += price * item.quantity;
+
+    const basePrice = Number(menuItem.price);
+    let customizationTotal = 0;
+
+    // Calculate customization price modifiers
+    if (item.customizations && menuItem.hasCustomization) {
+      const customizationOptions = menuItem.customizationOptions as any;
+
+      // Validate and sum price modifiers from customizations
+      if (item.customizations.ayamType) {
+        customizationTotal += item.customizations.ayamType.priceModifier || 0;
+      }
+      if (item.customizations.sambalLevel) {
+        customizationTotal += item.customizations.sambalLevel.priceModifier || 0;
+      }
+      if (item.customizations.drink) {
+        customizationTotal += item.customizations.drink.priceModifier || 0;
+      }
+    }
+
+    const itemTotalPrice = (basePrice + customizationTotal) * item.quantity;
+    subtotal += itemTotalPrice;
+
+    orderItems.push({
+      menuItemId: menuItem.id,
+      menuItemName: menuItem.name,
+      basePrice,
+      quantity: item.quantity,
+      customizations: item.customizations,
+      totalPrice: parseFloat(itemTotalPrice.toFixed(2)),
+    });
   }
 
   const sst = subtotal * SST_RATE;
-  const total = subtotal + sst + deliveryFee;
+  const total = subtotal + sst + BOOKING_FEE + deliveryFee;
 
   return {
     subtotal: parseFloat(subtotal.toFixed(2)),
     sst: parseFloat(sst.toFixed(2)),
+    bookingFee: BOOKING_FEE,
     deliveryFee: parseFloat(deliveryFee.toFixed(2)),
     total: parseFloat(total.toFixed(2)),
+    orderItems,
   };
 }
 
@@ -78,7 +125,7 @@ router.post('/dine-in', async (req, res) => {
     }
 
     const parsedDate = parseAndValidateBookingDate(bookingDateStr);
-    const totals = await calculateServerTotals(items);
+    const { orderItems, ...totals } = await calculateServerTotals(items);
 
     // Use serializable transaction to prevent overbooking capacity
     const result = await prisma.$transaction(async (tx) => {
@@ -106,13 +153,13 @@ router.post('/dine-in', async (req, res) => {
         throw new Error('OUTSIDE_HOURS');
       }
 
-      // Sum pax for dine-in orders in this slot on this date
+      // Sum pax for dine-in orders in this slot on this date (exclude PENDING - not yet paid)
       const paxAggregate = await tx.order.aggregate({
         where: {
           timeSlotId,
           bookingDate: parsedDate,
           fulfillmentType: 'DINE_IN',
-          status: { in: ['PENDING', 'PAID', 'CONFIRMED'] },
+          status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] }, // PENDING orders don't count until paid
         },
         _sum: { paxCount: true },
       });
@@ -122,7 +169,7 @@ router.post('/dine-in', async (req, res) => {
         throw new Error('CAPACITY_FULL');
       }
 
-      // Create order with paxCount (no tableId)
+      // Create order with paxCount and orderItems (no tableId)
       const order = await tx.order.create({
         data: {
           orderNo: generateOrderNo(),
@@ -134,6 +181,7 @@ router.post('/dine-in', async (req, res) => {
           customerEmail,
           customerPhone,
           bookingDate: parsedDate,
+          orderItems: orderItems as any, // Store customized items
           ...totals,
           notes,
         },
@@ -188,7 +236,6 @@ router.post('/dine-in', async (req, res) => {
     if (error.message?.includes('no longer available') || error.message?.includes('Invalid quantity')) {
       return res.status(400).json({ error: error.message });
     }
-    console.error('Error creating dine-in reservation:', error);
     res.status(500).json({ error: 'Failed to create reservation' });
   }
 });
@@ -207,7 +254,7 @@ router.post('/takeaway', async (req, res) => {
     }
 
     const parsedDate = parseAndValidateBookingDate(bookingDateStr);
-    const totals = await calculateServerTotals(items);
+    const { orderItems, ...totals } = await calculateServerTotals(items);
 
     // Use transaction with row-level locking to prevent overselling
     const result = await prisma.$transaction(async (tx) => {
@@ -235,12 +282,12 @@ router.post('/takeaway', async (req, res) => {
         throw new Error('OUTSIDE_HOURS');
       }
 
-      // Count orders for this slot on the specific date
+      // Count orders for this slot on the specific date (exclude PENDING - not yet paid)
       const dateOrderCount = await tx.order.count({
         where: {
           timeSlotId,
           bookingDate: parsedDate,
-          status: { in: ['PENDING', 'PAID', 'CONFIRMED'] },
+          status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] }, // PENDING orders don't count until paid
         },
       });
 
@@ -248,7 +295,7 @@ router.post('/takeaway', async (req, res) => {
         throw new Error('SLOT_FULL');
       }
 
-      // Create order
+      // Create order with orderItems
       const order = await tx.order.create({
         data: {
           orderNo: generateOrderNo(),
@@ -259,6 +306,7 @@ router.post('/takeaway', async (req, res) => {
           customerEmail,
           customerPhone,
           bookingDate: parsedDate,
+          orderItems: orderItems as any, // Store customized items
           ...totals,
           notes,
         },
@@ -310,7 +358,6 @@ router.post('/takeaway', async (req, res) => {
     if (error.message?.includes('no longer available') || error.message?.includes('Invalid quantity')) {
       return res.status(400).json({ error: error.message });
     }
-    console.error('Error creating takeaway order:', error);
     res.status(500).json({ error: 'Failed to create order' });
   }
 });
@@ -335,7 +382,7 @@ router.post('/delivery', async (req, res) => {
       return res.status(404).json({ error: 'Outlet not found' });
     }
 
-    const totals = await calculateServerTotals(items, Number(outlet.deliveryFee));
+    const { orderItems, ...totals } = await calculateServerTotals(items, Number(outlet.deliveryFee));
 
     const order = await prisma.order.create({
       data: {
@@ -347,6 +394,7 @@ router.post('/delivery', async (req, res) => {
         customerPhone,
         bookingDate: parsedDate,
         deliveryAddress,
+        orderItems: orderItems as any, // Store customized items
         ...totals,
         notes,
       },
@@ -382,7 +430,6 @@ router.post('/delivery', async (req, res) => {
     if (error.message?.includes('no longer available') || error.message?.includes('Invalid quantity')) {
       return res.status(400).json({ error: error.message });
     }
-    console.error('Error creating delivery order:', error);
     res.status(500).json({ error: 'Failed to create order' });
   }
 });
@@ -401,7 +448,6 @@ router.get('/:orderNo', async (req, res) => {
 
     res.json(order);
   } catch (error) {
-    console.error('Error fetching order:', error);
     res.status(500).json({ error: 'Failed to fetch order' });
   }
 });
@@ -446,7 +492,6 @@ router.get('/customer/orders', optionalCustomerAuth, async (req: Request, res: R
       },
     });
   } catch (error) {
-    console.error('Error fetching customer orders:', error);
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
@@ -495,7 +540,6 @@ router.put('/:id/cancel', optionalCustomerAuth, async (req: Request, res: Respon
       order: updatedOrder,
     });
   } catch (error) {
-    console.error('Error cancelling order:', error);
     res.status(500).json({ error: 'Failed to cancel order' });
   }
 });

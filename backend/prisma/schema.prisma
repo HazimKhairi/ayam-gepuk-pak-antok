@@ -87,30 +87,34 @@ model Order {
   orderNo         String          @unique @db.VarChar(20)
   outletId        String
   fulfillmentType FulfillmentType
-  
+
   // Customer info
   customerName    String          @db.VarChar(100)
   customerEmail   String          @db.VarChar(100)
   customerPhone   String          @db.VarChar(20)
-  
+
   // Booking details
   bookingDate     DateTime        @db.Date
   tableId         String?
   timeSlotId      String?
   paxCount        Int?
   deliveryAddress String?         @db.Text
-  
+
+  // Order items with customizations
+  orderItems      Json?           // Stores array of ordered items with customizations
+
   // Pricing
   subtotal        Decimal         @db.Decimal(10, 2)
   sst             Decimal         @db.Decimal(10, 2)
+  bookingFee      Decimal         @db.Decimal(10, 2) @default(1.00)
   deliveryFee     Decimal         @db.Decimal(10, 2) @default(0)
   total           Decimal         @db.Decimal(10, 2)
-  
+
   // Status
   status          OrderStatus     @default(PENDING)
   notes           String?         @db.Text
   reminderSent    Boolean         @default(false)
-  
+
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -218,20 +222,22 @@ model Customer {
 
 // MenuItem model - dynamic menu items
 model MenuItem {
-  id          String   @id @default(uuid())
-  name        String   @db.VarChar(100)
-  description String   @db.VarChar(255)
-  price       Decimal  @db.Decimal(10, 2)
-  image       String   @db.VarChar(255) // URL or path
-  category    String   @db.VarChar(50) // e.g. "Set Menu", "Ala Carte"
-  ingredients String?  @db.Text // JSON string or comma-separated
-  freeItem    String?  @db.VarChar(100)
-  isFeatured  Boolean  @default(false)
-  isActive    Boolean  @default(true)
-  rating      Decimal  @db.Decimal(2, 1) @default(5.0)
-  reviewCount Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  name                 String   @db.VarChar(100)
+  description          String   @db.VarChar(255)
+  price                Decimal  @db.Decimal(10, 2)
+  image                String   @db.VarChar(255) // URL or path
+  category             String   @db.VarChar(50) // e.g. "Set Menu", "Ala Carte"
+  ingredients          String?  @db.Text // JSON string or comma-separated
+  freeItem             String?  @db.VarChar(100)
+  isFeatured           Boolean  @default(false)
+  isActive             Boolean  @default(true)
+  rating               Decimal  @db.Decimal(2, 1) @default(5.0)
+  reviewCount          Int      @default(0)
+  hasCustomization     Boolean  @default(false)
+  customizationOptions Json?    // Stores customization config (ayamType, sambalLevel, drink)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@map("menu_items")
 }

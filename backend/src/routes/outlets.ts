@@ -13,7 +13,6 @@ router.get('/', async (req, res) => {
     });
     res.json(outlets);
   } catch (error) {
-    console.error('Error fetching outlets:', error);
     res.status(500).json({ error: 'Failed to fetch outlets' });
   }
 });
@@ -35,7 +34,6 @@ router.get('/:id', async (req, res) => {
 
     res.json(outlet);
   } catch (error) {
-    console.error('Error fetching outlet:', error);
     res.status(500).json({ error: 'Failed to fetch outlet' });
   }
 });
@@ -107,7 +105,6 @@ router.get('/:id/tables', async (req, res) => {
 
     res.json(tablesWithStatus);
   } catch (error) {
-    console.error('Error fetching tables:', error);
     res.status(500).json({ error: 'Failed to fetch tables' });
   }
 });
@@ -224,7 +221,6 @@ router.get('/:id/slots', async (req, res) => {
 
     res.json(slotsWithStatus);
   } catch (error) {
-    console.error('Error fetching time slots:', error);
     res.status(500).json({ error: 'Failed to fetch time slots' });
   }
 });
@@ -251,7 +247,6 @@ router.put('/:id', async (req, res) => {
 
     res.json(outlet);
   } catch (error) {
-    console.error('Error updating outlet:', error);
     res.status(500).json({ error: 'Failed to update outlet' });
   }
 });
