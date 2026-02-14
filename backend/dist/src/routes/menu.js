@@ -26,7 +26,6 @@ router.get('/', async (req, res) => {
         res.json(menuItems);
     }
     catch (error) {
-        console.error('Error fetching menu items:', error);
         res.status(500).json({ error: 'Failed to fetch menu items' });
     }
 });
@@ -41,7 +40,6 @@ router.get('/all', async (req, res) => {
         res.json(menuItems);
     }
     catch (error) {
-        console.error('Error fetching all menu items:', error);
         res.status(500).json({ error: 'Failed to fetch menu items' });
     }
 });
@@ -59,7 +57,6 @@ router.get('/featured', async (req, res) => {
         res.json(featuredItems);
     }
     catch (error) {
-        console.error('Error fetching featured items:', error);
         res.status(500).json({ error: 'Failed to fetch featured items' });
     }
 });
@@ -77,7 +74,6 @@ router.get('/:id', async (req, res) => {
         res.json(menuItem);
     }
     catch (error) {
-        console.error('Error fetching menu item:', error);
         res.status(500).json({ error: 'Failed to fetch menu item' });
     }
 });
@@ -100,7 +96,6 @@ router.post('/', async (req, res) => {
         res.status(201).json(menuItem);
     }
     catch (error) {
-        console.error('Error creating menu item:', error);
         res.status(500).json({ error: 'Failed to create menu item' });
     }
 });
@@ -124,7 +119,6 @@ router.put('/:id', async (req, res) => {
         res.json(menuItem);
     }
     catch (error) {
-        console.error('Error updating menu item:', error);
         res.status(500).json({ error: 'Failed to update menu item' });
     }
 });
@@ -137,7 +131,6 @@ router.delete('/:id', async (req, res) => {
         res.json({ message: 'Menu item deleted successfully' });
     }
     catch (error) {
-        console.error('Error deleting menu item:', error);
         res.status(500).json({ error: 'Failed to delete menu item' });
     }
 });

@@ -13,7 +13,8 @@
     "db:seed": "ts-node prisma/seed.ts",
     "db:studio": "prisma studio",
     "migrate:customization": "ts-node scripts/add-customization-to-menu.ts",
-    "update:sets": "ts-node scripts/update-all-sets.ts"
+    "update:sets": "ts-node scripts/update-all-sets.ts",
+    "update:sets-simple": "ts-node scripts/update-sets-simple.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",

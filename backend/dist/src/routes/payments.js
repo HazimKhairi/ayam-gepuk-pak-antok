@@ -11,7 +11,9 @@ const router = (0, express_1.Router)();
 router.post('/callback', async (req, res) => {
     try {
         const { billcode, order_id, status_id, transaction_id } = req.body;
-        console.log('ToyyibPay Callback:', req.body);
+        if (!billcode || !status_id) {
+            return res.status(400).json({ error: 'Missing required callback parameters' });
+        }
         // Find payment by billCode
         const payment = await prisma_1.default.payment.findFirst({
             where: { billCode: billcode },
@@ -28,6 +30,10 @@ router.post('/callback', async (req, res) => {
         if (!payment) {
             return res.status(404).json({ error: 'Payment not found' });
         }
+        // Prevent duplicate processing
+        if (payment.status === 'SUCCESS') {
+            return res.json({ success: true, message: 'Already processed' });
+        }
         // Update payment status
         const paymentStatus = status_id === '1' ? 'SUCCESS' : status_id === '3' ? 'FAILED' : 'PENDING';
         await prisma_1.default.payment.update({
@@ -43,12 +49,12 @@ router.post('/callback', async (req, res) => {
         if (paymentStatus === 'SUCCESS') {
             await prisma_1.default.order.update({
                 where: { id: payment.orderId },
-                data: { status: 'CONFIRMED' },
+                data: { status: 'COMPLETED' },
             });
-            // Send confirmation email
-            await (0, email_1.sendConfirmationEmail)(payment.order);
-            // Schedule 1-hour reminder
-            await (0, email_1.scheduleReminder)(payment.order);
+            // Send confirmation email (non-blocking)
+            (0, email_1.sendConfirmationEmail)(payment.order).catch(() => { });
+            // Schedule reminder (non-blocking)
+            (0, email_1.scheduleReminder)(payment.order).catch(() => { });
         }
         else if (paymentStatus === 'FAILED') {
             await prisma_1.default.order.update({
@@ -66,7 +72,6 @@ router.post('/callback', async (req, res) => {
         res.json({ success: true });
     }
     catch (error) {
-        console.error('Error processing payment callback:', error);
         res.status(500).json({ error: 'Failed to process callback' });
     }
 });
@@ -77,25 +82,74 @@ router.get('/status/:billCode', async (req, res) => {
             where: { billCode: req.params.billCode },
             include: {
                 order: {
-                    include: {
-                        outlet: true,
-                        table: true,
-                        timeSlot: true,
-                    },
+                    include: { outlet: true, table: true, timeSlot: true },
                 },
             },
         });
         if (!payment) {
             return res.status(404).json({ error: 'Payment not found' });
         }
+        res.json({ status: payment.status, order: payment.order });
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Failed to check status' });
+    }
+});
+// POST /api/v1/payments/complete/:orderNo - Manual payment completion for testing
+router.post('/complete/:orderNo', async (req, res) => {
+    try {
+        const order = await prisma_1.default.order.findUnique({
+            where: { orderNo: req.params.orderNo },
+            include: {
+                payment: true,
+                outlet: true,
+                table: true,
+                timeSlot: true,
+            },
+        });
+        if (!order) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+        if (!order.payment) {
+            return res.status(404).json({ error: 'Payment record not found' });
+        }
+        // Prevent duplicate processing
+        if (order.payment.status === 'SUCCESS') {
+            return res.json({ success: true, message: 'Payment already completed', order });
+        }
+        // Update payment status
+        await prisma_1.default.payment.update({
+            where: { id: order.payment.id },
+            data: {
+                status: 'SUCCESS',
+                paidAt: new Date(),
+                transactionId: `MANUAL_${Date.now()}`,
+            },
+        });
+        // Update order status to COMPLETED
+        const updatedOrder = await prisma_1.default.order.update({
+            where: { id: order.id },
+            data: { status: 'COMPLETED' },
+            include: {
+                outlet: true,
+                table: true,
+                timeSlot: true,
+                payment: true,
+            },
+        });
+        // Send confirmation email (non-blocking)
+        (0, email_1.sendConfirmationEmail)(updatedOrder).catch(() => { });
+        // Schedule reminder (non-blocking)
+        (0, email_1.scheduleReminder)(updatedOrder).catch(() => { });
         res.json({
-            status: payment.status,
-            order: payment.order,
+            success: true,
+            message: 'Payment completed successfully',
+            order: updatedOrder
         });
     }
     catch (error) {
-        console.error('Error checking payment status:', error);
-        res.status(500).json({ error: 'Failed to check status' });
+        console.error('Manual payment completion error:', error);
+        res.status(500).json({ error: 'Failed to complete payment' });
     }
 });
 exports.default = router;

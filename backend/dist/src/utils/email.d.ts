@@ -17,6 +17,7 @@ interface Order {
         address: string;
         phone: string;
     };
+    paxCount?: number | null;
     table?: {
         tableNo: string;
         capacity: number;

@@ -57,7 +57,7 @@ Auth routes get a stricter rate limiter: 10 attempts per 15 minutes.
 **API Routes (all prefixed with `/api/v1`):**
 - `/outlets` - Outlet CRUD + tables/slots per outlet
 - `/reservations` - Booking creation (POST dine-in, takeaway, delivery) + order lookup
-- `/payments` - ToyyibPay callback webhook + payment status check by billCode
+- `/payments` - ToyyibPay callback webhook (`POST /callback`), payment status check by billCode (`GET /status/:billCode`), manual completion for testing (`POST /complete/:orderNo`)
 - `/admin` - Dashboard stats, sales reports, order management, outlet config, table CRUD (all protected by `requireAdmin` middleware)
 - `/auth` - Customer register/login + admin login (bcrypt, rate-limited) + email/phone availability checks
 - `/menu` - Menu CRUD with category filtering, featured items (max 3)
@@ -150,7 +150,8 @@ Key enums: `TableStatus` (AVAILABLE/BOOKED/OCCUPIED/MAINTENANCE), `OrderStatus` 
 - **Order window**: Outlets have configurable open/close times
 - **Pax capacity**: Dine-in uses per-outlet `maxCapacity` per time slot; customer specifies pax count (1-50)
 - **Time slots**: Takeaway/delivery orders have per-slot limits (`maxOrders`)
-- **Payment flow**: All reservations require ToyyibPay payment before confirmation
+- **Payment flow**: All reservations require ToyyibPay payment before confirmation. Upon successful payment (status_id=1), order status automatically changes to COMPLETED (not CONFIRMED)
+- **Manual payment testing**: For local development where ToyyibPay webhooks can't reach localhost, use `POST /api/v1/payments/complete/:orderNo` to manually complete payments
 - **Email reminders**: Automated confirmation + 1-hour reminder before booking
 - **Seed resets data**: Running `db:seed` clears all existing data before re-seeding; blocked in NODE_ENV=production
 
@@ -186,3 +187,27 @@ Frontend `.env.local`:
 - User speaks Malay (Bahasa Melayu) but documentation should remain in English
 - Frontend is configured for static export (`output: 'export'`) - dynamic features requiring server runtime must use client-side data fetching
 - Server auto-cleans abandoned orders on startup via `cleanupOrders.ts`
+- **Payment webhook limitation**: ToyyibPay webhooks cannot reach localhost during development. For local testing, use the manual completion endpoint or test on production/staging with public URL
+- **Order status flow**: PENDING → (payment success) → COMPLETED (skips CONFIRMED). Orders go directly to COMPLETED after successful payment to simplify the workflow
+
+## Deployment
+
+**VPS Details** (stored in `vps_account.md`):
+- Host: 72.62.243.23
+- User: root
+- Project path: `/var/www/agpa`
+- PM2 processes: `agpa-backend` (port 3001), `agpa-frontend` (port 3000)
+
+**Deployment Steps**:
+1. Commit and push changes to GitHub
+2. SSH into VPS: `ssh root@72.62.243.23`
+3. Navigate to project: `cd /var/www/agpa`
+4. Copy updated files (project is not a git repo on VPS)
+5. Build backend: `cd backend && npm run build`
+6. Restart PM2: `pm2 restart agpa-backend`
+7. Verify: `pm2 logs agpa-backend --lines 20`
+
+**Production URLs**:
+- Frontend: Hosted on VPS
+- Backend API: http://72.62.243.23:3001/api/v1
+- Health check: http://72.62.243.23:3001/health

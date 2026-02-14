@@ -20,6 +20,7 @@ const createBill = async (order, paymentId) => {
         // Check if credentials are placeholders or missing
         const isPlaceholder = (value) => {
             return !value ||
+                value === 'placeholder' ||
                 value.includes('your_') ||
                 value.includes('_here') ||
                 value === 'your_secret_key_here' ||
@@ -64,20 +65,21 @@ const createBill = async (order, paymentId) => {
         });
         if (response.data && response.data[0]?.BillCode) {
             const billCode = response.data[0].BillCode;
+            console.log('✅ ToyyibPay bill created:', billCode);
             return {
                 success: true,
                 billCode,
                 paymentUrl: `${TOYYIBPAY_URL}/${billCode}`,
             };
         }
-        console.error('ToyyibPay error:', response.data);
+        console.error('❌ ToyyibPay API response:', JSON.stringify(response.data));
         return {
             success: false,
-            error: 'Failed to create bill',
+            error: `Failed to create bill: ${JSON.stringify(response.data)}`,
         };
     }
     catch (error) {
-        console.error('ToyyibPay API error:', error.message);
+        console.error('❌ ToyyibPay error:', error.response?.data || error.message);
         return {
             success: false,
             error: error.message,
@@ -107,7 +109,6 @@ const getBillTransactions = async (billCode) => {
         };
     }
     catch (error) {
-        console.error('ToyyibPay transaction check error:', error.message);
         return {
             success: false,
             error: error.message,

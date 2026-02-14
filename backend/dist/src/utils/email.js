@@ -15,13 +15,26 @@ const transporter = nodemailer_1.default.createTransport({
         pass: process.env.SMTP_PASS,
     },
 });
+// HTML escape to prevent XSS in emails
+function escapeHtml(str) {
+    if (!str)
+        return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 /**
  * Send confirmation email after successful payment
  */
 const sendConfirmationEmail = async (order) => {
     try {
         const fulfillmentText = {
-            DINE_IN: `Table ${order.table?.tableNo} (${order.table?.zone} - ${order.table?.capacity} Pax)`,
+            DINE_IN: order.paxCount
+                ? `${order.paxCount} pax at ${order.timeSlot?.time || 'scheduled time'}`
+                : `Table ${order.table?.tableNo} (${order.table?.zone} - ${order.table?.capacity} Pax)`,
             TAKEAWAY: `Pickup at ${order.timeSlot?.time}`,
             DELIVERY: `Delivery to: ${order.deliveryAddress}`,
         };
@@ -49,7 +62,7 @@ const sendConfirmationEmail = async (order) => {
             <h1>🍗 Booking Confirmed!</h1>
           </div>
           <div class="content">
-            <p>Assalamualaikum <strong>${order.customerName}</strong>,</p>
+            <p>Assalamualaikum <strong>${escapeHtml(order.customerName)}</strong>,</p>
             <p>Thank you for your reservation at <strong>${order.outlet?.name}</strong>!</p>
             
             <div class="order-info">
@@ -103,7 +116,7 @@ const sendConfirmationEmail = async (order) => {
             ${order.notes ? `
             <div style="background: #e7f3ff; padding: 15px; border-radius: 8px;">
               <strong>📝 Your Notes:</strong><br>
-              ${order.notes}
+              ${escapeHtml(order.notes || '')}
             </div>
             ` : ''}
 
@@ -125,11 +138,9 @@ const sendConfirmationEmail = async (order) => {
             subject: `✅ Booking Confirmed - ${order.orderNo}`,
             html,
         });
-        console.log(`📧 Confirmation email sent to ${order.customerEmail}`);
         return true;
     }
     catch (error) {
-        console.error('Failed to send confirmation email:', error);
         return false;
     }
 };
@@ -147,8 +158,12 @@ const scheduleReminder = async (order) => {
         bookingTime = new Date(bookingDate);
         bookingTime.setHours(hours, minutes, 0, 0);
     }
+    else if (order.fulfillmentType === 'DINE_IN' && order.timeSlot?.time) {
+        const [hours, minutes] = order.timeSlot.time.split(':').map(Number);
+        bookingTime = new Date(bookingDate);
+        bookingTime.setHours(hours, minutes, 0, 0);
+    }
     else if (order.fulfillmentType === 'DINE_IN') {
-        // Assume dinner time for dine-in (e.g., 19:00)
         bookingTime = new Date(bookingDate);
         bookingTime.setHours(19, 0, 0, 0);
     }
@@ -164,7 +179,6 @@ const scheduleReminder = async (order) => {
         setTimeout(async () => {
             await sendReminderEmail(order);
         }, delay);
-        console.log(`⏰ Reminder scheduled for ${reminderTime.toISOString()}`);
     }
 };
 exports.scheduleReminder = scheduleReminder;
@@ -193,7 +207,7 @@ const sendReminderEmail = async (order) => {
             <h1>⏰ Reminder: 1 Hour to Go!</h1>
           </div>
           <div class="content">
-            <p>Assalamualaikum <strong>${order.customerName}</strong>,</p>
+            <p>Assalamualaikum <strong>${escapeHtml(order.customerName)}</strong>,</p>
             <p>This is a friendly reminder about your reservation at <strong>${order.outlet?.name}</strong>.</p>
             
             <div class="reminder-box">
@@ -221,11 +235,9 @@ const sendReminderEmail = async (order) => {
             subject: `⏰ Reminder: 1 Hour Until Your Booking - ${order.orderNo}`,
             html,
         });
-        console.log(`📧 Reminder email sent to ${order.customerEmail}`);
         return true;
     }
     catch (error) {
-        console.error('Failed to send reminder email:', error);
         return false;
     }
 };
