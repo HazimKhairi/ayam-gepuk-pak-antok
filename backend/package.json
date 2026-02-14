@@ -11,7 +11,8 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "ts-node prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "migrate:customization": "ts-node scripts/add-customization-to-menu.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",
