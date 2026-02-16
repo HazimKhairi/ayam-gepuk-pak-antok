@@ -10,12 +10,26 @@ router.use(requireAdmin);
 // GET /api/v1/admin/dashboard - Get dashboard stats
 router.get('/dashboard', async (req, res) => {
   try {
-    const { outletId } = req.query;
+    const { outletId, startDate, endDate } = req.query;
 
     // Show only paid orders
     const where: any = {
       ...(outletId && { outletId: outletId as string }),
     };
+
+    // Add date filter if provided
+    if (startDate && endDate) {
+      const start = new Date(startDate as string);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(endDate as string);
+      end.setHours(23, 59, 59, 999);
+
+      where.bookingDate = {
+        gte: start,
+        lte: end,
+      };
+    }
 
     // Base filter for paid orders only
     const paidOrdersWhere = {
