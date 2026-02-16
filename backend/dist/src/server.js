@@ -10,7 +10,7 @@ const compression_1 = __importDefault(require("compression"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const prisma_1 = __importDefault(require("./config/prisma"));
-const cleanupOrders_1 = require("./utils/cleanupOrders");
+const scheduler_1 = require("./utils/scheduler");
 // Load environment variables
 dotenv_1.default.config();
 // Validate required environment variables
@@ -34,8 +34,11 @@ const auth_1 = __importDefault(require("./routes/auth"));
 const upload_1 = __importDefault(require("./routes/upload"));
 const reviews_1 = __importDefault(require("./routes/reviews"));
 const promotions_1 = __importDefault(require("./routes/promotions"));
+const categories_1 = __importDefault(require("./routes/categories"));
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3001;
+// Trust proxy (for rate limiting behind reverse proxy/load balancer)
+app.set('trust proxy', 1);
 // Security headers
 app.use((0, helmet_1.default)({
     crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow image loading from different origins
@@ -86,6 +89,7 @@ app.get('/health', async (req, res) => {
 app.use('/api/v1/outlets', outlets_1.default);
 app.use('/api/v1/reservations', reservations_1.default);
 app.use('/api/v1/menu', menu_1.default);
+app.use('/api/v1/categories', categories_1.default);
 app.use('/api/v1/payments', payments_1.default);
 app.use('/api/v1/admin', admin_1.default);
 app.use('/api/v1/auth', authLimiter, auth_1.default);
@@ -104,10 +108,8 @@ app.use((err, req, res, next) => {
 const server = app.listen(PORT, async () => {
     console.log(`Server running on http://localhost:${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    // Cleanup abandoned orders on startup
-    await (0, cleanupOrders_1.cleanupOnStartup)().catch(err => {
-        console.error('Failed to run cleanup on startup:', err);
-    });
+    // Start periodic cleanup (runs every 1 hour)
+    (0, scheduler_1.startPeriodicCleanup)();
 });
 // Graceful shutdown
 const shutdown = async (signal) => {

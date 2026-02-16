@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import prisma from './config/prisma';
 import { cleanupOnStartup } from './utils/cleanupOrders';
+import { startPeriodicCleanup } from './utils/scheduler';
 
 // Load environment variables
 dotenv.config();
@@ -121,10 +122,8 @@ const server = app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 
-  // Cleanup abandoned orders on startup
-  await cleanupOnStartup().catch(err => {
-    console.error('Failed to run cleanup on startup:', err);
-  });
+  // Start periodic cleanup (runs every 1 hour)
+  startPeriodicCleanup();
 });
 
 // Graceful shutdown

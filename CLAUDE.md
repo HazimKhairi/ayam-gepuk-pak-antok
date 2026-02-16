@@ -58,10 +58,15 @@ Auth routes get a stricter rate limiter: 10 attempts per 15 minutes.
 **API Routes (all prefixed with `/api/v1`):**
 - `/outlets` - Outlet CRUD + tables/slots per outlet
 - `/reservations` - Booking creation (POST dine-in, takeaway, delivery) + order lookup
-- `/payments` - ToyyibPay callback webhook (`POST /callback`), payment status check by billCode (`GET /status/:billCode`), manual completion for testing (`POST /complete/:orderNo`)
+- `/payments` - ToyyibPay integration with comprehensive webhook handling:
+  - `POST /callback` - ToyyibPay webhook endpoint (requires public BACKEND_URL)
+  - `GET /status/:billCode` - Check payment status
+  - `POST /verify/:orderNo` - Verify and sync payment from ToyyibPay (webhook recovery)
+  - `POST /complete/:orderNo` - Manual completion for local testing
 - `/admin` - Dashboard stats, sales reports, order management, outlet config, table CRUD (all protected by `requireAdmin` middleware)
 - `/auth` - Customer register/login + admin login (bcrypt, rate-limited) + email/phone availability checks
 - `/menu` - Menu CRUD with category filtering, featured items (max 3)
+- `/categories` - Category CRUD (Set Menu, Ala Carte, Drinks) with display ordering
 - `/upload` - Multer image upload (5MB limit, images only → `public/uploads/`)
 - `/reviews` - Celebrity testimonials (read-only)
 - `/promotions` - Promotion management
@@ -72,7 +77,8 @@ Auth routes get a stricter rate limiter: 10 attempts per 15 minutes.
 - `backend/src/utils/toyyibpay.ts` - Payment bill creation; auto-falls back to mock sandbox mode when credentials are placeholder values
 - `backend/src/utils/email.ts` - Nodemailer confirmation emails + 1-hour reminder scheduling
 - `backend/src/utils/cleanupOrders.ts` - Auto-cleanup of abandoned orders on server startup
-- `backend/prisma/seed.ts` - Seeds 6 outlets with Google Maps URLs, 12 tables per outlet, time slots (dine-in: 10am-5pm, takeaway: 2pm-11pm), master admin, 17 menu items, reviews, and system settings including social media links
+- `backend/prisma/seed.ts` - Seeds 6 outlets with Google Maps URLs, 12 tables per outlet, time slots (dine-in: 10am-5pm, takeaway: 2pm-11pm), master admin, 3 categories, 17 menu items, reviews, and system settings including social media links
+- `backend/src/routes/categories.ts` - Category CRUD with display ordering and slug generation
 
 **Input validation:** Backend uses `zod` for request body validation.
 
@@ -99,6 +105,7 @@ Auth routes get a stricter rate limiter: 10 attempts per 15 minutes.
 - `src/app/book/{dine-in,takeaway,delivery}/` - Booking flows
 - `src/app/admin/` - Admin dashboard (orders, outlets, menu, settings)
 - `src/app/admin/login/` - Separate admin login page
+- `src/app/admin/categories/` - Category management (create/edit/reorder categories)
 - `src/app/checkout/` - Universal cart checkout for all fulfillment types
 - `src/app/confirmation/[orderNo]/` and `src/app/receipt/[orderNo]/` - Post-payment pages
 
@@ -123,6 +130,9 @@ Base URL from `NEXT_PUBLIC_API_URL` env var (default `http://localhost:3001/api/
 - Admin pages use `getAdminHeaders()` helper for auth headers
 - Native `alert()` for error feedback (no toast library)
 - `recharts` for admin dashboard charts, `three` for 3D elements
+- **MenuItemImage component**: Use for all menu item images (includes fallback to `/default-image.png` on error)
+- **Cart and Order Summary**: Display text-only without images (design preference)
+- **Admin Dashboard Auto-Refresh**: Dashboard automatically refreshes every 30 seconds with toggle control and manual refresh button. Live "Updated Xs ago" indicator updates every second. Sales reports require manual refresh to prevent disruption during analysis.
 
 **Menu Customization System:**
 - `CustomizationModal` component handles customization selection for menu items
@@ -134,6 +144,7 @@ Base URL from `NEXT_PUBLIC_API_URL` env var (default `http://localhost:3001/api/
 - Modal validates required selections before confirming
 - Cart items store customizations in `customizations` field
 - Integrated in both home page and menu page
+- **Database field mapping**: Database stores options with `id` field, frontend expects `value` field — `menuApi.ts` transforms this automatically via `transformOptions()` and `transformGroup()` helpers
 
 ### Dine-in Booking (Pax-Based)
 Dine-in booking is pax-based — customers select number of guests + time slot, admin arranges tables internally.
@@ -144,15 +155,17 @@ Dine-in booking is pax-based — customers select number of guests + time slot, 
 - Table model is kept for admin internal use but customers no longer select tables directly.
 
 ### Database (Prisma)
-Schema at `backend/prisma/schema.prisma`. Core models: Outlet, Table, TimeSlot, Order, Payment, Admin, Customer, MenuItem, Setting, Review, Promotion.
+Schema at `backend/prisma/schema.prisma`. Core models: Outlet, Table, TimeSlot, Order, Payment, Admin, Customer, Category, MenuItem, Setting, Review, Promotion.
 
 Key enums: `TableStatus` (AVAILABLE/BOOKED/OCCUPIED/MAINTENANCE), `OrderStatus` (PENDING/PAID/CONFIRMED/COMPLETED/CANCELLED), `FulfillmentType` (DINE_IN/TAKEAWAY/DELIVERY), `PaymentStatus`, `AdminRole` (MASTER/OUTLET).
 
 **Important:**
 - `Order` stores customer info (name/email/phone) as denormalized fields — there is no foreign key to `Customer`. The `Customer` model exists only for auth/faster checkout, not linked relationally to orders.
-- `Outlet` model includes `googleMapsUrl` field for navigation links
-- `Setting` model stores system-wide configs including social media URLs (Instagram, TikTok)
-- `MenuItem` has `hasCustomization` boolean and `customizationOptions` JSON field for menu item customization (chicken type, spice level, drinks)
+- `Category` model stores menu categories with `displayOrder` for custom sorting, `slug` for URL-friendly names (e.g., "set-menu"), and `isActive` flag. Each category has many menu items (one-to-many relationship).
+- `MenuItem` has a required `categoryId` foreign key to `Category` (onDelete: Restrict to prevent accidental deletion of categories with items).
+- `MenuItem` has `hasCustomization` boolean and `customizationOptions` JSON field for menu item customization (chicken type, spice level, drinks).
+- `Outlet` model includes `googleMapsUrl` field for navigation links.
+- `Setting` model stores system-wide configs including social media URLs (Instagram, TikTok).
 
 ## Business Logic Constraints
 
@@ -186,7 +199,8 @@ Backend `.env` (see `backend/.env.example`):
 - `JWT_EXPIRES_IN` - Admin token expiry (default `24h`; customer tokens are always `7d`)
 - `TOYYIBPAY_SECRET_KEY`, `TOYYIBPAY_CATEGORY_CODE`, `TOYYIBPAY_URL` - Payment gateway (sandbox: dev.toyyibpay.com)
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` - Gmail SMTP for booking emails
-- `FRONTEND_URL` - For CORS and payment callbacks (default http://localhost:3000)
+- `FRONTEND_URL` - For CORS and payment return URLs (default http://localhost:3000)
+- **`BACKEND_URL`** - **CRITICAL**: Public URL for ToyyibPay webhook callbacks (e.g., http://72.62.243.23:3001). Must be publicly accessible. Missing this causes payment webhooks to fail.
 
 Frontend `.env.local`:
 - `NEXT_PUBLIC_API_URL` - Backend API base URL (default http://localhost:3001/api/v1)
@@ -202,25 +216,59 @@ Frontend `.env.local`:
 - Server auto-cleans abandoned orders on startup via `cleanupOrders.ts`
 - **Payment webhook limitation**: ToyyibPay webhooks cannot reach localhost during development. For local testing, use the manual completion endpoint or test on production/staging with public URL
 - **Order status flow**: PENDING → (payment success) → COMPLETED (skips CONFIRMED). Orders go directly to COMPLETED after successful payment to simplify the workflow
+- **BACKEND_URL is mandatory in production**: Without it, ToyyibPay webhooks default to localhost and fail silently. See `PAYMENT_WEBHOOK_FIX.md` for troubleshooting stuck payments.
+- **Category deletion**: Categories cannot be deleted if they have associated menu items (Restrict constraint). Move items to another category first, or delete them before removing a category.
+
+## Payment Webhook Troubleshooting
+
+If orders are stuck in PENDING status despite successful payment:
+
+1. **Verify BACKEND_URL is set**: `ssh root@72.62.243.23 'grep BACKEND_URL /var/www/agpa/backend/.env'`
+2. **Check webhook logs**: `pm2 logs agpa-backend | grep "ToyyibPay webhook"`
+3. **Use verification endpoint**: `curl -X POST http://72.62.243.23:3001/api/v1/payments/verify/{orderNo}`
+4. **Run recovery script**: `cd backend && npx ts-node scripts/verify-stuck-payments.ts`
+5. **Check for stuck orders**: Query DB for `status='PENDING' AND callbackData IS NULL`
+
+See `PAYMENT_WEBHOOK_FIX.md` for detailed troubleshooting guide.
 
 ## Deployment
 
 **VPS Details** (stored in `vps_account.md`):
 - Host: 72.62.243.23
 - User: root
+- Password: Hostinger@2026
 - Project path: `/var/www/agpa`
 - PM2 processes: `agpa-backend` (port 3001), `agpa-frontend` (port 3000)
 
 **Deployment Steps**:
-1. Commit and push changes to GitHub
-2. SSH into VPS: `ssh root@72.62.243.23`
+1. Upload files via SCP: `sshpass -p 'Hostinger@2026' scp <local-file> root@72.62.243.23:/var/www/agpa/<remote-path>`
+2. SSH into VPS: `sshpass -p 'Hostinger@2026' ssh root@72.62.243.23`
 3. Navigate to project: `cd /var/www/agpa`
-4. Copy updated files (project is not a git repo on VPS)
-5. Build backend: `cd backend && npm run build`
-6. Restart PM2: `pm2 restart agpa-backend`
-7. Verify: `pm2 logs agpa-backend --lines 20`
+4. Build and restart:
+   - Backend: `cd backend && npm run build && pm2 restart agpa-backend`
+   - Frontend: `cd frontend && npm run build && pm2 restart agpa-frontend`
+5. Verify: `pm2 logs <process-name> --lines 20`
+6. Check PM2 status: `pm2 status`
+
+**Common deployment pattern** (used in recent work):
+```bash
+# Upload file
+sshpass -p 'Hostinger@2026' scp frontend/src/components/CartDropdown.tsx root@72.62.243.23:/var/www/agpa/frontend/src/components/
+
+# Build and restart in one command
+sshpass -p 'Hostinger@2026' ssh root@72.62.243.23 'cd /var/www/agpa/frontend && npm run build && pm2 restart agpa-frontend'
+
+# Verify
+sshpass -p 'Hostinger@2026' ssh root@72.62.243.23 'pm2 logs agpa-frontend --lines 5 --nostream'
+```
 
 **Production URLs**:
-- Frontend: Hosted on VPS
+- Frontend: Hosted on VPS (port 3000)
 - Backend API: http://72.62.243.23:3001/api/v1
 - Health check: http://72.62.243.23:3001/health
+
+**Important notes**:
+- VPS is NOT a git repository - files must be copied manually via SCP
+- Always build after uploading changes
+- Both backend and frontend use PM2 for process management
+- Frontend uses `serve` (not `next start`) due to static export mode

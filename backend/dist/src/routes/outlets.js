@@ -6,23 +6,40 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const prisma_1 = __importDefault(require("../config/prisma"));
 const dateValidation_1 = require("../utils/dateValidation");
+const redis_1 = require("../config/redis");
 const router = (0, express_1.Router)();
-// GET /api/v1/outlets - List all active outlets
+// GET /api/v1/outlets - List all active outlets (CACHED)
 router.get('/', async (req, res) => {
     try {
+        // Try cache first
+        const cacheKey = 'outlets:all';
+        const cached = await redis_1.cache.get(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+        // Cache miss - fetch from database
         const outlets = await prisma_1.default.outlet.findMany({
             where: { isActive: true },
             orderBy: { name: 'asc' },
         });
+        // Store in cache for 5 minutes
+        await redis_1.cache.set(cacheKey, outlets, 300);
         res.json(outlets);
     }
     catch (error) {
         res.status(500).json({ error: 'Failed to fetch outlets' });
     }
 });
-// GET /api/v1/outlets/:id - Get single outlet with details
+// GET /api/v1/outlets/:id - Get single outlet with details (CACHED)
 router.get('/:id', async (req, res) => {
     try {
+        // Try cache first
+        const cacheKey = `outlets:${req.params.id}`;
+        const cached = await redis_1.cache.get(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+        // Cache miss - fetch from database
         const outlet = await prisma_1.default.outlet.findUnique({
             where: { id: req.params.id },
             include: {
@@ -33,6 +50,8 @@ router.get('/:id', async (req, res) => {
         if (!outlet) {
             return res.status(404).json({ error: 'Outlet not found' });
         }
+        // Store in cache for 5 minutes
+        await redis_1.cache.set(cacheKey, outlet, 300);
         res.json(outlet);
     }
     catch (error) {
@@ -216,6 +235,9 @@ router.put('/:id', async (req, res) => {
                 ...(deliveryEnabled !== undefined && { deliveryEnabled }),
             },
         });
+        // Invalidate cache for this outlet and all outlets list
+        await redis_1.cache.del(`outlets:${req.params.id}`);
+        await redis_1.cache.del('outlets:all');
         res.json(outlet);
     }
     catch (error) {

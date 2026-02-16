@@ -1,14 +1,25 @@
 import { Router } from 'express';
 import prisma from '../config/prisma';
+import { cache } from '../config/redis';
 
 const router = Router();
 
 // GET /api/v1/menu
-// Get all menu items
+// Get all menu items (CACHED)
 router.get('/', async (req, res) => {
   try {
     const { category, categoryId } = req.query;
 
+    // Create cache key based on query params
+    const cacheKey = `menu:${categoryId || category || 'all'}`;
+
+    // Try cache first
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    // Cache miss - fetch from database
     const where: any = {
       isActive: true,
     };
@@ -36,6 +47,8 @@ router.get('/', async (req, res) => {
       },
     });
 
+    // Store in cache for 5 minutes
+    await cache.set(cacheKey, menuItems, 300);
     res.json(menuItems);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch menu items' });
@@ -61,9 +74,18 @@ router.get('/all', async (req, res) => {
 });
 
 // GET /api/v1/menu/featured
-// Get featured menu items
+// Get featured menu items (CACHED)
 router.get('/featured', async (req, res) => {
   try {
+    const cacheKey = 'menu:featured';
+
+    // Try cache first
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    // Cache miss - fetch from database
     const featuredItems = await prisma.menuItem.findMany({
       where: {
         isActive: true,
@@ -72,6 +94,8 @@ router.get('/featured', async (req, res) => {
       take: 3,
     });
 
+    // Store in cache for 10 minutes
+    await cache.set(cacheKey, featuredItems, 600);
     res.json(featuredItems);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch featured items' });
@@ -123,6 +147,9 @@ router.post('/', async (req, res) => {
       },
     });
 
+    // Invalidate menu caches
+    await cache.clear('menu:*');
+
     res.status(201).json(menuItem);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create menu item' });
@@ -151,6 +178,9 @@ router.put('/:id', async (req, res) => {
       },
     });
 
+    // Invalidate menu caches
+    await cache.clear('menu:*');
+
     res.json(menuItem);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update menu item' });
@@ -163,6 +193,9 @@ router.delete('/:id', async (req, res) => {
     await prisma.menuItem.delete({
       where: { id: req.params.id },
     });
+
+    // Invalidate menu caches
+    await cache.clear('menu:*');
 
     res.json({ message: 'Menu item deleted successfully' });
   } catch (error) {

@@ -11,38 +11,49 @@ router.use(requireAdmin);
 router.get('/dashboard', async (req, res) => {
   try {
     const { outletId } = req.query;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
 
-    const where = {
+    // Show only paid orders
+    const where: any = {
       ...(outletId && { outletId: outletId as string }),
-      bookingDate: { gte: today },
     };
 
-    // Get order counts
+    // Base filter for paid orders only
+    const paidOrdersWhere = {
+      ...where,
+      payment: {
+        status: 'SUCCESS'
+      }
+    };
+
+    // Get order counts - only count successfully paid orders
     const [totalOrders, pendingOrders, confirmedOrders, completedOrders] = await Promise.all([
-      prisma.order.count({ where }),
-      prisma.order.count({ where: { ...where, status: 'PENDING' } }),
-      prisma.order.count({ where: { ...where, status: 'CONFIRMED' } }),
-      prisma.order.count({ where: { ...where, status: 'COMPLETED' } }),
+      prisma.order.count({ where: paidOrdersWhere }),
+      prisma.order.count({ where: { ...paidOrdersWhere, status: 'PENDING' } }),
+      prisma.order.count({ where: { ...paidOrdersWhere, status: 'CONFIRMED' } }),
+      prisma.order.count({ where: { ...paidOrdersWhere, status: 'COMPLETED' } }),
     ]);
 
-    // Get total sales
+    // Get total sales - only count successfully paid orders
     const salesData = await prisma.order.aggregate({
-      where: { ...where, status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] } },
+      where: { ...paidOrdersWhere, status: 'COMPLETED' },
       _sum: { total: true },
     });
 
-    // Get orders by fulfillment type
+    // Get orders by fulfillment type - only count successfully paid orders
     const ordersByType = await prisma.order.groupBy({
       by: ['fulfillmentType'],
-      where,
+      where: { ...paidOrdersWhere, status: 'COMPLETED' },
       _count: true,
     });
 
-    // Get recent orders
+    // Get recent orders - only show successfully paid orders
     const recentOrders = await prisma.order.findMany({
-      where,
+      where: {
+        ...where,
+        payment: {
+          status: 'SUCCESS'
+        }
+      },
       orderBy: { createdAt: 'desc' },
       take: 10,
       include: {
@@ -75,35 +86,54 @@ router.get('/dashboard', async (req, res) => {
 // GET /api/v1/admin/sales - Get sales report
 router.get('/sales', async (req, res) => {
   try {
-    const { outletId, startDate, endDate } = req.query;
+    const { outletId, startDate, endDate, groupBy = 'month' } = req.query;
 
     const where: any = {};
 
     if (outletId) where.outletId = outletId;
     if (startDate && endDate) {
+      // Set start date to beginning of day
+      const start = new Date(startDate as string);
+      start.setHours(0, 0, 0, 0);
+
+      // Set end date to end of day (23:59:59.999)
+      const end = new Date(endDate as string);
+      end.setHours(23, 59, 59, 999);
+
       where.bookingDate = {
-        gte: new Date(startDate as string),
-        lte: new Date(endDate as string),
+        gte: start,
+        lte: end,
       };
     }
 
-    // Get daily sales
+    // Get sales orders - only count COMPLETED orders (successfully paid)
     const orders = await prisma.order.findMany({
-      where: { ...where, status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] } },
+      where: { ...where, status: 'COMPLETED' },
       include: { outlet: true },
       orderBy: { bookingDate: 'asc' },
     });
 
-    // Group by date
-    const salesByDate = orders.reduce((acc, order) => {
-      const date = order.bookingDate.toISOString().split('T')[0];
-      if (!acc[date]) {
-        acc[date] = { date, total: 0, count: 0 };
+    // Group by date or month based on groupBy parameter
+    const salesByPeriod = orders.reduce((acc, order) => {
+      let period: string;
+      if (groupBy === 'month') {
+        // Format as "YYYY-MM" for grouping, but store full date for display
+        const date = new Date(order.bookingDate);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        period = `${year}-${month}`;
+      } else {
+        // Daily grouping
+        period = order.bookingDate.toISOString().split('T')[0];
       }
-      acc[date].total += Number(order.total);
-      acc[date].count += 1;
+
+      if (!acc[period]) {
+        acc[period] = { period, total: 0, count: 0 };
+      }
+      acc[period].total += Number(order.total);
+      acc[period].count += 1;
       return acc;
-    }, {} as Record<string, { date: string; total: number; count: number }>);
+    }, {} as Record<string, { period: string; total: number; count: number }>);
 
     // Sales by outlet
     const salesByOutlet = orders.reduce((acc, order) => {
@@ -117,10 +147,11 @@ router.get('/sales', async (req, res) => {
     }, {} as Record<string, { outlet: string; total: number; count: number }>);
 
     res.json({
-      salesByDate: Object.values(salesByDate),
+      salesByPeriod: Object.values(salesByPeriod),
       salesByOutlet: Object.values(salesByOutlet),
       totalRevenue: orders.reduce((sum, o) => sum + Number(o.total), 0),
       totalOrders: orders.length,
+      groupBy: groupBy as string,
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch sales' });
@@ -130,12 +161,19 @@ router.get('/sales', async (req, res) => {
 // GET /api/v1/admin/orders - Get all orders
 router.get('/orders', async (req, res) => {
   try {
-    const { outletId, status, fulfillmentType, page = '1', limit = '20' } = req.query;
+    const { outletId, status, fulfillmentType, page = '1', limit = '20', showUnpaid = 'false' } = req.query;
 
     const where: any = {};
     if (outletId) where.outletId = outletId;
     if (status) where.status = status;
     if (fulfillmentType) where.fulfillmentType = fulfillmentType;
+
+    // By default, only show orders with successful payment (exclude unpaid/abandoned orders)
+    if (showUnpaid !== 'true') {
+      where.payment = {
+        status: 'SUCCESS'
+      };
+    }
 
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
 

@@ -5,24 +5,48 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const prisma_1 = __importDefault(require("../config/prisma"));
+const redis_1 = require("../config/redis");
 const router = (0, express_1.Router)();
 // GET /api/v1/menu
-// Get all menu items
+// Get all menu items (CACHED)
 router.get('/', async (req, res) => {
     try {
-        const { category } = req.query;
+        const { category, categoryId } = req.query;
+        // Create cache key based on query params
+        const cacheKey = `menu:${categoryId || category || 'all'}`;
+        // Try cache first
+        const cached = await redis_1.cache.get(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+        // Cache miss - fetch from database
         const where = {
             isActive: true,
         };
-        if (category) {
-            where.category = category;
+        // Support filtering by category slug (backward compatible) or categoryId
+        if (categoryId) {
+            where.categoryId = categoryId;
+        }
+        else if (category) {
+            // Find category by slug for backward compatibility
+            const categoryRecord = await prisma_1.default.category.findUnique({
+                where: { slug: category },
+            });
+            if (categoryRecord) {
+                where.categoryId = categoryRecord.id;
+            }
         }
         const menuItems = await prisma_1.default.menuItem.findMany({
             where,
+            include: {
+                category: true, // Include category details
+            },
             orderBy: {
                 name: 'asc',
             },
         });
+        // Store in cache for 5 minutes
+        await redis_1.cache.set(cacheKey, menuItems, 300);
         res.json(menuItems);
     }
     catch (error) {
@@ -33,6 +57,9 @@ router.get('/', async (req, res) => {
 router.get('/all', async (req, res) => {
     try {
         const menuItems = await prisma_1.default.menuItem.findMany({
+            include: {
+                category: true, // Include category details
+            },
             orderBy: {
                 name: 'asc',
             },
@@ -44,9 +71,16 @@ router.get('/all', async (req, res) => {
     }
 });
 // GET /api/v1/menu/featured
-// Get featured menu items
+// Get featured menu items (CACHED)
 router.get('/featured', async (req, res) => {
     try {
+        const cacheKey = 'menu:featured';
+        // Try cache first
+        const cached = await redis_1.cache.get(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+        // Cache miss - fetch from database
         const featuredItems = await prisma_1.default.menuItem.findMany({
             where: {
                 isActive: true,
@@ -54,6 +88,8 @@ router.get('/featured', async (req, res) => {
             },
             take: 3,
         });
+        // Store in cache for 10 minutes
+        await redis_1.cache.set(cacheKey, featuredItems, 600);
         res.json(featuredItems);
     }
     catch (error) {
@@ -80,19 +116,27 @@ router.get('/:id', async (req, res) => {
 // POST /api/v1/menu (Admin - create menu item)
 router.post('/', async (req, res) => {
     try {
-        const { name, description, price, category, image, ingredients, isActive, isFeatured } = req.body;
+        const { name, description, price, categoryId, image, ingredients, isActive, isFeatured } = req.body;
+        if (!categoryId) {
+            return res.status(400).json({ error: 'Category ID is required' });
+        }
         const menuItem = await prisma_1.default.menuItem.create({
             data: {
                 name,
                 description,
                 price,
-                category,
+                categoryId,
                 image: image || '',
                 ingredients: ingredients || '',
                 isActive: isActive !== undefined ? isActive : true,
                 isFeatured: isFeatured || false,
             },
+            include: {
+                category: true,
+            },
         });
+        // Invalidate menu caches
+        await redis_1.cache.clear('menu:*');
         res.status(201).json(menuItem);
     }
     catch (error) {
@@ -102,20 +146,25 @@ router.post('/', async (req, res) => {
 // PUT /api/v1/menu/:id (Admin - update menu item)
 router.put('/:id', async (req, res) => {
     try {
-        const { name, description, price, category, image, ingredients, isActive, isFeatured } = req.body;
+        const { name, description, price, categoryId, image, ingredients, isActive, isFeatured } = req.body;
         const menuItem = await prisma_1.default.menuItem.update({
             where: { id: req.params.id },
             data: {
                 ...(name && { name }),
                 ...(description !== undefined && { description }),
                 ...(price !== undefined && { price }),
-                ...(category && { category }),
+                ...(categoryId && { categoryId }),
                 ...(image !== undefined && { image }),
                 ...(ingredients !== undefined && { ingredients }),
                 ...(isActive !== undefined && { isActive }),
                 ...(isFeatured !== undefined && { isFeatured }),
             },
+            include: {
+                category: true,
+            },
         });
+        // Invalidate menu caches
+        await redis_1.cache.clear('menu:*');
         res.json(menuItem);
     }
     catch (error) {
@@ -128,6 +177,8 @@ router.delete('/:id', async (req, res) => {
         await prisma_1.default.menuItem.delete({
             where: { id: req.params.id },
         });
+        // Invalidate menu caches
+        await redis_1.cache.clear('menu:*');
         res.json({ message: 'Menu item deleted successfully' });
     }
     catch (error) {

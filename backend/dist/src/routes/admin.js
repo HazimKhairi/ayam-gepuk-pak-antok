@@ -13,11 +13,9 @@ router.use(auth_1.requireAdmin);
 router.get('/dashboard', async (req, res) => {
     try {
         const { outletId } = req.query;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        // Show all orders, not just future ones
         const where = {
             ...(outletId && { outletId: outletId }),
-            bookingDate: { gte: today },
         };
         // Get order counts
         const [totalOrders, pendingOrders, confirmedOrders, completedOrders] = await Promise.all([
@@ -26,9 +24,9 @@ router.get('/dashboard', async (req, res) => {
             prisma_1.default.order.count({ where: { ...where, status: 'CONFIRMED' } }),
             prisma_1.default.order.count({ where: { ...where, status: 'COMPLETED' } }),
         ]);
-        // Get total sales
+        // Get total sales - only count COMPLETED orders (paid orders)
         const salesData = await prisma_1.default.order.aggregate({
-            where: { ...where, status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] } },
+            where: { ...where, status: 'COMPLETED' },
             _sum: { total: true },
         });
         // Get orders by fulfillment type
@@ -71,30 +69,47 @@ router.get('/dashboard', async (req, res) => {
 // GET /api/v1/admin/sales - Get sales report
 router.get('/sales', async (req, res) => {
     try {
-        const { outletId, startDate, endDate } = req.query;
+        const { outletId, startDate, endDate, groupBy = 'month' } = req.query;
         const where = {};
         if (outletId)
             where.outletId = outletId;
         if (startDate && endDate) {
+            // Set start date to beginning of day
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            // Set end date to end of day (23:59:59.999)
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
             where.bookingDate = {
-                gte: new Date(startDate),
-                lte: new Date(endDate),
+                gte: start,
+                lte: end,
             };
         }
-        // Get daily sales
+        // Get sales orders - only count COMPLETED orders (successfully paid)
         const orders = await prisma_1.default.order.findMany({
-            where: { ...where, status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] } },
+            where: { ...where, status: 'COMPLETED' },
             include: { outlet: true },
             orderBy: { bookingDate: 'asc' },
         });
-        // Group by date
-        const salesByDate = orders.reduce((acc, order) => {
-            const date = order.bookingDate.toISOString().split('T')[0];
-            if (!acc[date]) {
-                acc[date] = { date, total: 0, count: 0 };
+        // Group by date or month based on groupBy parameter
+        const salesByPeriod = orders.reduce((acc, order) => {
+            let period;
+            if (groupBy === 'month') {
+                // Format as "YYYY-MM" for grouping, but store full date for display
+                const date = new Date(order.bookingDate);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                period = `${year}-${month}`;
             }
-            acc[date].total += Number(order.total);
-            acc[date].count += 1;
+            else {
+                // Daily grouping
+                period = order.bookingDate.toISOString().split('T')[0];
+            }
+            if (!acc[period]) {
+                acc[period] = { period, total: 0, count: 0 };
+            }
+            acc[period].total += Number(order.total);
+            acc[period].count += 1;
             return acc;
         }, {});
         // Sales by outlet
@@ -108,10 +123,11 @@ router.get('/sales', async (req, res) => {
             return acc;
         }, {});
         res.json({
-            salesByDate: Object.values(salesByDate),
+            salesByPeriod: Object.values(salesByPeriod),
             salesByOutlet: Object.values(salesByOutlet),
             totalRevenue: orders.reduce((sum, o) => sum + Number(o.total), 0),
             totalOrders: orders.length,
+            groupBy: groupBy,
         });
     }
     catch (error) {
@@ -145,8 +161,36 @@ router.get('/orders', async (req, res) => {
             }),
             prisma_1.default.order.count({ where }),
         ]);
+        // Enrich orderItems with menu item images
+        const enrichedOrders = await Promise.all(orders.map(async (order) => {
+            if (order.orderItems && Array.isArray(order.orderItems)) {
+                const menuItemNames = order.orderItems.map((item) => item.menuItemName);
+                // Fetch menu items for this order
+                const menuItems = await prisma_1.default.menuItem.findMany({
+                    where: {
+                        name: { in: menuItemNames },
+                    },
+                    select: {
+                        name: true,
+                        image: true,
+                    },
+                });
+                // Create a map for quick lookup
+                const menuItemMap = new Map(menuItems.map((item) => [item.name, item.image]));
+                // Add image to each order item
+                const enrichedItems = order.orderItems.map((item) => ({
+                    ...item,
+                    menuItemImage: menuItemMap.get(item.menuItemName) || '',
+                }));
+                return {
+                    ...order,
+                    orderItems: enrichedItems,
+                };
+            }
+            return order;
+        }));
         res.json({
-            orders,
+            orders: enrichedOrders,
             pagination: {
                 page: parseInt(page),
                 limit: parseInt(limit),

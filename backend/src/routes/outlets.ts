@@ -1,25 +1,45 @@
 import { Router } from 'express';
 import prisma from '../config/prisma';
 import { isTimeWithinOutletHours } from '../utils/dateValidation';
+import { cache } from '../config/redis';
 
 const router = Router();
 
-// GET /api/v1/outlets - List all active outlets
+// GET /api/v1/outlets - List all active outlets (CACHED)
 router.get('/', async (req, res) => {
   try {
+    // Try cache first
+    const cacheKey = 'outlets:all';
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    // Cache miss - fetch from database
     const outlets = await prisma.outlet.findMany({
       where: { isActive: true },
       orderBy: { name: 'asc' },
     });
+
+    // Store in cache for 5 minutes
+    await cache.set(cacheKey, outlets, 300);
     res.json(outlets);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch outlets' });
   }
 });
 
-// GET /api/v1/outlets/:id - Get single outlet with details
+// GET /api/v1/outlets/:id - Get single outlet with details (CACHED)
 router.get('/:id', async (req, res) => {
   try {
+    // Try cache first
+    const cacheKey = `outlets:${req.params.id}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    // Cache miss - fetch from database
     const outlet = await prisma.outlet.findUnique({
       where: { id: req.params.id },
       include: {
@@ -32,6 +52,8 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Outlet not found' });
     }
 
+    // Store in cache for 5 minutes
+    await cache.set(cacheKey, outlet, 300);
     res.json(outlet);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch outlet' });
@@ -244,6 +266,10 @@ router.put('/:id', async (req, res) => {
         ...(deliveryEnabled !== undefined && { deliveryEnabled }),
       },
     });
+
+    // Invalidate cache for this outlet and all outlets list
+    await cache.del(`outlets:${req.params.id}`);
+    await cache.del('outlets:all');
 
     res.json(outlet);
   } catch (error) {

@@ -1,0 +1,129 @@
+════════════════════════════════════════════════════════════
+  DEPLOY MENU DETAILS KE PRODUCTION - STEP BY STEP
+════════════════════════════════════════════════════════════
+
+📋 FILE YANG PERLU UPLOAD:
+   backend/update-menu-details.ts
+
+🎯 CARA DEPLOY (Pilih salah satu):
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OPTION 1: Guna FTP/SFTP (Paling Mudah)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Buka FileZilla atau FTP client lain
+2. Connect ke: 72.62.243.23
+3. Navigate ke: /var/www/agpa/backend/
+4. Upload file: update-menu-details.ts
+5. SSH masuk dan run command ni:
+
+   ssh root@72.62.243.23
+   cd /var/www/agpa/backend
+   npx ts-node update-menu-details.ts
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OPTION 2: Copy Paste Script Content
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. SSH masuk VPS:
+   ssh root@72.62.243.23
+
+2. Navigate ke backend:
+   cd /var/www/agpa/backend
+
+3. Create file baru:
+   nano update-menu-details.ts
+
+4. Copy SEMUA content dari file:
+   backend/update-menu-details.ts
+
+   (File ada dekat local project - buka dan copy semua)
+
+5. Paste dalam nano, then:
+   - Press Ctrl+X
+   - Press Y
+   - Press Enter
+
+6. Run script:
+   npx ts-node update-menu-details.ts
+
+7. Kalau success, delete file:
+   rm update-menu-details.ts
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXPECTED OUTPUT (Kalau Berjaya):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔄 Updating menu items with detailed information...
+
+✅ Updated: Set A (Crispy/Original)
+✅ Updated: Set B (Crispy/Original)
+✅ Updated: Set C (Crispy/Original)
+✅ Updated: Set Lele Pak Antok
+✅ Updated: Set Bihun Soto
+✅ Updated: Set Coco Meal
+✅ Updated: Strawberry Mojito
+✅ Updated: Apple Mojito
+✅ Updated: Blue Lemon Ice
+✅ Updated: Blackcurrent Ice
+✅ Updated: Ice Lemon Tea
+✅ Updated: Ayam Original
+✅ Updated: Ayam Crispy
+✅ Updated: Sup Bebola
+✅ Updated: Pedal/Hati (3pcs)
+✅ Updated: Kobis Goreng
+✅ Updated: Bergedil (4pcs)
+
+✨ All menu items updated successfully!
+
+📝 Summary:
+   - 6 Set Menu items
+   - 5 Drink items
+   - 6 Ala Carte items
+   - Total: 17 items updated
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TESTING AFTER DEPLOYMENT:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Clear browser cache (Ctrl+Shift+Delete)
+
+2. Go to: https://agpa.nextapmy.com/menu
+
+3. Add "Set A (Crispy/Original)" to cart
+
+4. Click cart icon - sepatutnya nampak:
+   ✓ Description
+   ✓ "Termasuk: Nasi Putih, Ayam Gepuk..."
+   ✓ 🎁 Free drinks
+
+5. Click "Proceed to Checkout"
+
+6. Check Order Summary - semua details kena keluar
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TROUBLESHOOTING:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ "Command not found: npx"
+   → Run: npm install -g npm
+
+❌ "Cannot find module '@prisma/client'"
+   → Run: npm install
+
+❌ "Database connection error"
+   → Check .env file ada DATABASE_URL yang betul
+
+❌ Frontend tak keluar details
+   → Hard refresh (Ctrl+F5)
+   → Clear cache
+   → Check browser console untuk errors
+
+
+════════════════════════════════════════════════════════════
+
+📞 Need help? Let me know bila dah try deploy!

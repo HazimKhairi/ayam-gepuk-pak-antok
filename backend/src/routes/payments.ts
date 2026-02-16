@@ -2,15 +2,19 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import prisma from '../config/prisma';
 import { sendConfirmationEmail, scheduleReminder } from '../utils/email';
+import { getBillTransactions } from '../utils/toyyibpay';
 
 const router = Router();
 
 // POST /api/v1/payments/callback - ToyyibPay callback
 router.post('/callback', async (req, res) => {
   try {
+    console.log('🔔 ToyyibPay webhook received:', JSON.stringify(req.body));
+
     const { billcode, order_id, status_id, transaction_id } = req.body;
 
     if (!billcode || !status_id) {
+      console.error('❌ Webhook missing parameters:', req.body);
       return res.status(400).json({ error: 'Missing required callback parameters' });
     }
 
@@ -29,16 +33,21 @@ router.post('/callback', async (req, res) => {
     });
 
     if (!payment) {
+      console.error('❌ Payment not found for billCode:', billcode);
       return res.status(404).json({ error: 'Payment not found' });
     }
 
+    console.log('📦 Found payment for order:', payment.order.orderNo);
+
     // Prevent duplicate processing
     if (payment.status === 'SUCCESS') {
+      console.log('⚠️ Payment already processed:', payment.order.orderNo);
       return res.json({ success: true, message: 'Already processed' });
     }
 
     // Update payment status
     const paymentStatus = status_id === '1' ? 'SUCCESS' : status_id === '3' ? 'FAILED' : 'PENDING';
+    console.log(`💳 Payment status: ${paymentStatus} (status_id: ${status_id})`);
 
     await prisma.payment.update({
       where: { id: payment.id },
@@ -57,16 +66,24 @@ router.post('/callback', async (req, res) => {
         data: { status: 'COMPLETED' },
       });
 
+      console.log('✅ Order completed:', payment.order.orderNo);
+
       // Send confirmation email (non-blocking)
-      sendConfirmationEmail(payment.order).catch(() => {});
+      sendConfirmationEmail(payment.order).catch((err) => {
+        console.error('Email error:', err.message);
+      });
 
       // Schedule reminder (non-blocking)
-      scheduleReminder(payment.order).catch(() => {});
+      scheduleReminder(payment.order).catch((err) => {
+        console.error('Reminder error:', err.message);
+      });
     } else if (paymentStatus === 'FAILED') {
       await prisma.order.update({
         where: { id: payment.orderId },
         data: { status: 'CANCELLED' },
       });
+
+      console.log('❌ Order cancelled due to failed payment:', payment.order.orderNo);
 
       // If takeaway, decrement time slot
       if (payment.order.timeSlotId) {
@@ -78,7 +95,8 @@ router.post('/callback', async (req, res) => {
     }
 
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
+    console.error('❌ Webhook processing error:', error);
     res.status(500).json({ error: 'Failed to process callback' });
   }
 });
@@ -102,6 +120,114 @@ router.get('/status/:billCode', async (req, res) => {
     res.json({ status: payment.status, order: payment.order });
   } catch (error) {
     res.status(500).json({ error: 'Failed to check status' });
+  }
+});
+
+// POST /api/v1/payments/verify/:orderNo - Verify and sync payment status from ToyyibPay
+router.post('/verify/:orderNo', async (req, res) => {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { orderNo: req.params.orderNo },
+      include: {
+        payment: true,
+        outlet: true,
+        table: true,
+        timeSlot: true,
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (!order.payment || !order.payment.billCode) {
+      return res.status(404).json({ error: 'Payment record or billCode not found' });
+    }
+
+    // Already successful, no need to verify
+    if (order.payment.status === 'SUCCESS') {
+      return res.json({
+        success: true,
+        message: 'Payment already completed',
+        order,
+        alreadyCompleted: true
+      });
+    }
+
+    console.log(`🔍 Verifying payment for order ${order.orderNo} with billCode ${order.payment.billCode}`);
+
+    // Get transaction status from ToyyibPay
+    const result = await getBillTransactions(order.payment.billCode);
+
+    if (!result.success || !result.transactions || result.transactions.length === 0) {
+      console.error('Failed to get transactions from ToyyibPay:', result.error);
+      return res.status(500).json({
+        error: 'Failed to verify payment with ToyyibPay',
+        details: result.error
+      });
+    }
+
+    // Find successful transaction (billpaymentStatus = "1")
+    const successfulTxn = result.transactions.find((txn: any) => txn.billpaymentStatus === '1');
+
+    if (successfulTxn) {
+      console.log(`✅ Found successful payment for ${order.orderNo}:`, successfulTxn.billpaymentInvoiceNo);
+
+      // Update payment status
+      await prisma.payment.update({
+        where: { id: order.payment.id },
+        data: {
+          status: 'SUCCESS',
+          transactionId: successfulTxn.billpaymentInvoiceNo,
+          paidAt: new Date(),
+          callbackData: {
+            verified: true,
+            verifiedAt: new Date().toISOString(),
+            transaction: successfulTxn
+          },
+        },
+      });
+
+      // Update order status to COMPLETED
+      const updatedOrder = await prisma.order.update({
+        where: { id: order.id },
+        data: { status: 'COMPLETED' },
+        include: {
+          outlet: true,
+          table: true,
+          timeSlot: true,
+          payment: true,
+        },
+      });
+
+      // Send confirmation email (non-blocking)
+      sendConfirmationEmail(updatedOrder).catch((err) => {
+        console.error('Email error:', err.message);
+      });
+
+      // Schedule reminder (non-blocking)
+      scheduleReminder(updatedOrder).catch((err) => {
+        console.error('Reminder error:', err.message);
+      });
+
+      return res.json({
+        success: true,
+        message: 'Payment verified and order completed',
+        order: updatedOrder,
+        wasVerified: true
+      });
+    } else {
+      console.log(`❌ No successful payment found for ${order.orderNo}`);
+      return res.json({
+        success: false,
+        message: 'No successful payment found',
+        transactions: result.transactions,
+        stillPending: true
+      });
+    }
+  } catch (error: any) {
+    console.error('Payment verification error:', error);
+    res.status(500).json({ error: 'Failed to verify payment' });
   }
 });
 

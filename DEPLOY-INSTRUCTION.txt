@@ -1,0 +1,40 @@
+════════════════════════════════════════════════════════════════
+  🎯 SUPER SIMPLE DEPLOYMENT - 2 STEPS JE!
+════════════════════════════════════════════════════════════════
+
+STEP 1: Upload File via FTP/FileZilla
+──────────────────────────────────────
+📁 Upload file ni:
+   update-production-menu.ts
+
+📍 Ke location ni dekat VPS:
+   /var/www/agpa/backend/
+
+(Guna FileZilla atau FTP client yang you biasa guna)
+
+
+STEP 2: SSH & Run ONE Command
+──────────────────────────────
+SSH masuk VPS:
+   ssh root@72.62.243.23
+
+Then run SATU command ni je:
+   cd /var/www/agpa/backend && npx ts-node update-production-menu.ts && rm update-production-menu.ts
+
+
+DONE! ✅
+────────────────────────────────────────────────────────────────
+
+Kalau success, you akan nampak:
+✅ Updated: Set A (Crispy/Original)
+✅ Updated: Set B (Crispy/Original)
+✅ Updated: Set C (Crispy/Original)
+... (17 items total)
+✨ All menu items updated successfully!
+
+Test:
+1. Go to https://agpa.nextapmy.com/menu
+2. Add "Set A" to cart
+3. Click cart - should show full details!
+
+════════════════════════════════════════════════════════════════
