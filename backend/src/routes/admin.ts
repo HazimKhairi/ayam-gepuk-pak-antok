@@ -118,10 +118,15 @@ router.get('/sales', async (req, res) => {
       };
     }
 
-    // Get sales orders - only count COMPLETED orders (successfully paid)
+    // Get sales orders - only count orders with successful payment
     const orders = await prisma.order.findMany({
-      where: { ...where, status: 'COMPLETED' },
-      include: { outlet: true },
+      where: {
+        ...where,
+        payment: {
+          status: 'SUCCESS'
+        }
+      },
+      include: { outlet: true, payment: true },
       orderBy: { bookingDate: 'asc' },
     });
 
