@@ -166,8 +166,12 @@ router.get('/orders', async (req, res) => {
     if (status) where.status = status;
     if (fulfillmentType) where.fulfillmentType = fulfillmentType;
 
-    // By default, only show orders with successful payment (exclude unpaid/abandoned orders)
-    if (showUnpaid !== 'true') {
+    // Filter based on showUnpaid checkbox
+    if (showUnpaid === 'true') {
+      // Show only unpaid orders (PENDING status)
+      where.status = 'PENDING';
+    } else {
+      // By default, only show orders with successful payment
       where.payment = {
         status: 'SUCCESS'
       };
