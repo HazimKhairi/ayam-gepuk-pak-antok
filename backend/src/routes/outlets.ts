@@ -95,7 +95,7 @@ router.get('/:id/tables', async (req, res) => {
         outletId: req.params.id,
         fulfillmentType: 'DINE_IN',
         bookingDate: bookingDate,
-        status: { in: ['PENDING', 'PAID', 'CONFIRMED'] },
+        status: { in: ['PENDING'] },
       },
       select: {
         tableId: true,
@@ -177,7 +177,7 @@ router.get('/:id/slots', async (req, res) => {
           outletId: req.params.id,
           bookingDate: bookingDate,
           fulfillmentType: 'DINE_IN',
-          status: { in: ['PENDING', 'PAID', 'CONFIRMED'] },
+          status: { in: ['PENDING'] },
           timeSlotId: { not: null },
         },
         _sum: { paxCount: true },
@@ -219,7 +219,7 @@ router.get('/:id/slots', async (req, res) => {
       where: {
         outletId: req.params.id,
         bookingDate: bookingDate,
-        status: { in: ['PENDING', 'PAID', 'CONFIRMED'] },
+        status: { in: ['PENDING'] },
         timeSlotId: { not: null },
       },
       _count: true,

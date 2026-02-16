@@ -159,7 +159,7 @@ router.post('/dine-in', async (req, res) => {
           timeSlotId,
           bookingDate: parsedDate,
           fulfillmentType: 'DINE_IN',
-          status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] }, // PENDING orders don't count until paid
+          status: { in: ['COMPLETED'] }, // PENDING orders don't count until paid
         },
         _sum: { paxCount: true },
       });
@@ -287,7 +287,7 @@ router.post('/takeaway', async (req, res) => {
         where: {
           timeSlotId,
           bookingDate: parsedDate,
-          status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] }, // PENDING orders don't count until paid
+          status: { in: ['COMPLETED'] }, // PENDING orders don't count until paid
         },
       });
 
@@ -518,8 +518,8 @@ router.put('/:id/cancel', optionalCustomerAuth, async (req: Request, res: Respon
       return res.status(403).json({ error: 'Not authorized to cancel this order' });
     }
 
-    // Check if cancellable (PENDING, PAID, CONFIRMED only)
-    if (!['PENDING', 'PAID', 'CONFIRMED'].includes(order.status)) {
+    // Check if cancellable (PENDING only - once COMPLETED, cannot cancel)
+    if (!['PENDING'].includes(order.status)) {
       return res.status(400).json({
         error: `Cannot cancel order with status ${order.status}`,
       });

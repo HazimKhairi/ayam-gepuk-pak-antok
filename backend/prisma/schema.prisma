@@ -138,11 +138,9 @@ enum FulfillmentType {
 }
 
 enum OrderStatus {
-  PENDING
-  PAID
-  CONFIRMED
-  COMPLETED
-  CANCELLED
+  PENDING    // Awaiting payment
+  COMPLETED  // Payment successful and order completed
+  CANCELLED  // Order cancelled
 }
 
 // Payment model - ToyyibPay transaction tracking

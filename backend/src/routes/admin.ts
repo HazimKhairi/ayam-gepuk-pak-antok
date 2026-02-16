@@ -26,10 +26,9 @@ router.get('/dashboard', async (req, res) => {
     };
 
     // Get order counts - only count successfully paid orders
-    const [totalOrders, pendingOrders, confirmedOrders, completedOrders] = await Promise.all([
+    const [totalOrders, pendingOrders, completedOrders] = await Promise.all([
       prisma.order.count({ where: paidOrdersWhere }),
       prisma.order.count({ where: { ...paidOrdersWhere, status: 'PENDING' } }),
-      prisma.order.count({ where: { ...paidOrdersWhere, status: 'CONFIRMED' } }),
       prisma.order.count({ where: { ...paidOrdersWhere, status: 'COMPLETED' } }),
     ]);
 
@@ -68,7 +67,6 @@ router.get('/dashboard', async (req, res) => {
       stats: {
         totalOrders,
         pendingOrders,
-        confirmedOrders,
         completedOrders,
         totalSales: salesData._sum.total || 0,
       },
@@ -482,7 +480,7 @@ router.delete('/tables/:id', async (req, res) => {
       where: {
         tableId: req.params.id,
         bookingDate: { gte: today },
-        status: { in: ['PENDING', 'PAID', 'CONFIRMED'] },
+        status: { in: ['PENDING'] },
       },
     });
 
@@ -594,7 +592,7 @@ router.delete('/slots/:id', async (req: Request, res: Response) => {
     const activeBookings = await prisma.order.count({
       where: {
         timeSlotId: req.params.id,
-        status: { in: ['PENDING', 'PAID', 'CONFIRMED'] },
+        status: { in: ['PENDING'] },
         bookingDate: { gte: today }, // Today or future
       },
     });
