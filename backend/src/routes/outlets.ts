@@ -132,7 +132,7 @@ router.get('/:id/tables', async (req, res) => {
 });
 
 // GET /api/v1/outlets/:id/slots - Get available time slots for a specific date
-// Query params: date (YYYY-MM-DD), type ('dine_in' for pax-based capacity)
+// Query params: date (YYYY-MM-DD), type ('dine_in' | 'takeaway' | 'delivery')
 router.get('/:id/slots', async (req, res) => {
   try {
     const { date, type } = req.query;
@@ -152,10 +152,17 @@ router.get('/:id/slots', async (req, res) => {
       return res.status(400).json({ error: 'Cannot book more than 14 days ahead' });
     }
 
+    // Determine which active flag to filter by based on fulfillment type
+    const activeFlag = type === 'dine_in'
+      ? 'isActiveForDineIn'
+      : type === 'delivery'
+      ? 'isActiveForDelivery'
+      : 'isActiveForTakeaway'; // default to takeaway
+
     const timeSlots = await prisma.timeSlot.findMany({
       where: {
         outletId: req.params.id,
-        isActive: true,
+        [activeFlag]: true, // Filter by appropriate fulfillment type flag
       },
       orderBy: { time: 'asc' },
     });
@@ -164,7 +171,7 @@ router.get('/:id/slots', async (req, res) => {
     if (type === 'dine_in') {
       const outlet = await prisma.outlet.findUnique({
         where: { id: req.params.id },
-        select: { maxCapacity: true, openTime: true, closeTime: true },
+        select: { maxCapacity: true, dineInOpenTime: true, dineInCloseTime: true },
       });
 
       if (!outlet) {
@@ -187,19 +194,37 @@ router.get('/:id/slots', async (req, res) => {
         paxSums.map(p => [p.timeSlotId, p._sum.paxCount || 0])
       );
 
-      const slotsWithCapacity = timeSlots.map(slot => {
-        const currentPax = paxMap.get(slot.id) || 0;
-        const remainingPax = outlet.maxCapacity - currentPax;
-        const isDisabled = !isTimeWithinOutletHours(slot.time, outlet.openTime, outlet.closeTime);
-        return {
-          ...slot,
-          currentPax,
-          maxCapacity: outlet.maxCapacity,
-          remainingPax,
-          isAvailable: remainingPax > 0,
-          isDisabled,
-        };
-      });
+      const now = new Date();
+      const isToday = bookingDate.getTime() === today.getTime();
+
+      const slotsWithCapacity = timeSlots
+        .map(slot => {
+          const currentPax = paxMap.get(slot.id) || 0;
+          const remainingPax = outlet.maxCapacity - currentPax;
+          let isDisabled = !isTimeWithinOutletHours(slot.time, outlet.dineInOpenTime, outlet.dineInCloseTime);
+
+          // For same-day bookings, disable past time slots
+          if (isToday && !isDisabled) {
+            const [slotHour, slotMinute] = slot.time.split(':').map(Number);
+            const slotDateTime = new Date(now);
+            slotDateTime.setHours(slotHour, slotMinute, 0, 0);
+
+            // Disable if slot time has already passed
+            if (slotDateTime <= now) {
+              isDisabled = true;
+            }
+          }
+
+          return {
+            ...slot,
+            currentPax,
+            maxCapacity: outlet.maxCapacity,
+            remainingPax,
+            isAvailable: remainingPax > 0 && !isDisabled,
+            isDisabled,
+          };
+        })
+        .filter(slot => !slot.isDisabled); // Remove disabled slots for cleaner UI
 
       return res.json(slotsWithCapacity);
     }
@@ -207,7 +232,7 @@ router.get('/:id/slots', async (req, res) => {
     // Takeaway (default): return order-count-based availability
     const outlet = await prisma.outlet.findUnique({
       where: { id: req.params.id },
-      select: { openTime: true, closeTime: true },
+      select: { takeawayOpenTime: true, takeawayCloseTime: true },
     });
 
     if (!outlet) {
@@ -231,7 +256,7 @@ router.get('/:id/slots', async (req, res) => {
 
     const slotsWithStatus = timeSlots.map(slot => {
       const currentOrders = countMap.get(slot.id) || 0;
-      const isDisabled = !isTimeWithinOutletHours(slot.time, outlet.openTime, outlet.closeTime);
+      const isDisabled = !isTimeWithinOutletHours(slot.time, outlet.takeawayOpenTime, outlet.takeawayCloseTime);
       return {
         ...slot,
         currentOrders,
@@ -250,7 +275,7 @@ router.get('/:id/slots', async (req, res) => {
 // PUT /api/v1/outlets/:id - Update outlet (admin only)
 router.put('/:id', async (req, res) => {
   try {
-    const { name, address, phone, openTime, closeTime, deliveryFee, isActive, maxCapacity, deliveryEnabled } = req.body;
+    const { name, address, phone, openTime, closeTime, dineInOpenTime, dineInCloseTime, takeawayOpenTime, takeawayCloseTime, deliveryFee, isActive, maxCapacity, deliveryEnabled } = req.body;
 
     const outlet = await prisma.outlet.update({
       where: { id: req.params.id },
@@ -260,6 +285,10 @@ router.put('/:id', async (req, res) => {
         ...(phone && { phone }),
         ...(openTime && { openTime }),
         ...(closeTime && { closeTime }),
+        ...(dineInOpenTime && { dineInOpenTime }),
+        ...(dineInCloseTime && { dineInCloseTime }),
+        ...(takeawayOpenTime && { takeawayOpenTime }),
+        ...(takeawayCloseTime && { takeawayCloseTime }),
         ...(deliveryFee !== undefined && { deliveryFee }),
         ...(isActive !== undefined && { isActive }),
         ...(maxCapacity !== undefined && { maxCapacity }),

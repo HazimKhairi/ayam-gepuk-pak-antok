@@ -3,9 +3,10 @@ const MAX_BOOKING_DAYS_AHEAD = 14;
 /**
  * Parse and validate a booking date string (YYYY-MM-DD).
  * Defaults to today if no dateString provided.
- * Throws 'PAST_DATE' or 'DATE_TOO_FAR' on invalid dates.
+ * @param minDaysAhead - Minimum days in advance required (0 = today allowed, 1 = tomorrow earliest)
+ * Throws 'PAST_DATE', 'SAME_DAY_BOOKING', or 'DATE_TOO_FAR' on invalid dates.
  */
-export function parseAndValidateBookingDate(dateString?: string): Date {
+export function parseAndValidateBookingDate(dateString?: string, minDaysAhead: number = 0): Date {
   const date = dateString ? new Date(dateString) : new Date();
   date.setHours(0, 0, 0, 0);
 
@@ -18,6 +19,12 @@ export function parseAndValidateBookingDate(dateString?: string): Date {
 
   if (date < today) {
     throw new Error('PAST_DATE');
+  }
+
+  const minDate = new Date(today);
+  minDate.setDate(minDate.getDate() + minDaysAhead);
+  if (date < minDate) {
+    throw new Error('SAME_DAY_BOOKING');
   }
 
   const maxDate = new Date(today);

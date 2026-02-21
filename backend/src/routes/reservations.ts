@@ -67,9 +67,6 @@ async function calculateServerTotals(
 
     // Calculate customization price modifiers
     if (item.customizations && menuItem.hasCustomization) {
-      const customizationOptions = menuItem.customizationOptions as any;
-
-      // Validate and sum price modifiers from customizations
       if (item.customizations.ayamType) {
         customizationTotal += item.customizations.ayamType.priceModifier || 0;
       }
@@ -78,6 +75,11 @@ async function calculateServerTotals(
       }
       if (item.customizations.drink) {
         customizationTotal += item.customizations.drink.priceModifier || 0;
+      }
+      if (item.customizations.extras && Array.isArray(item.customizations.extras)) {
+        for (const extra of item.customizations.extras) {
+          customizationTotal += extra.priceModifier || 0;
+        }
       }
     }
 
@@ -124,7 +126,8 @@ router.post('/dine-in', async (req, res) => {
       return res.status(400).json({ error: 'Number of guests must be between 1 and 50' });
     }
 
-    const parsedDate = parseAndValidateBookingDate(bookingDateStr);
+    // Dine-in allows same-day booking (minDaysAhead = 0)
+    const parsedDate = parseAndValidateBookingDate(bookingDateStr, 0);
     const { orderItems, ...totals } = await calculateServerTotals(items);
 
     // Use serializable transaction to prevent overbooking capacity
@@ -138,18 +141,18 @@ router.post('/dine-in', async (req, res) => {
         throw new Error('SLOT_NOT_FOUND');
       }
 
-      // Get outlet max capacity and operating hours
+      // Get outlet max capacity and dine-in operating hours
       const outlet = await tx.outlet.findUnique({
         where: { id: outletId },
-        select: { maxCapacity: true, openTime: true, closeTime: true },
+        select: { maxCapacity: true, dineInOpenTime: true, dineInCloseTime: true },
       });
 
       if (!outlet) {
         throw new Error('OUTLET_NOT_FOUND');
       }
 
-      // Validate time is within outlet hours
-      if (!isTimeWithinOutletHours(timeSlot.time, outlet.openTime, outlet.closeTime)) {
+      // Validate time is within dine-in hours
+      if (!isTimeWithinOutletHours(timeSlot.time, outlet.dineInOpenTime, outlet.dineInCloseTime)) {
         throw new Error('OUTSIDE_HOURS');
       }
 
@@ -227,6 +230,9 @@ router.post('/dine-in', async (req, res) => {
     if (error.message === 'PAST_DATE') {
       return res.status(400).json({ error: 'Cannot book for past dates' });
     }
+    if (error.message === 'SAME_DAY_BOOKING') {
+      return res.status(400).json({ error: 'Invalid booking date. Please try another date.' });
+    }
     if (error.message === 'DATE_TOO_FAR') {
       return res.status(400).json({ error: 'Cannot book more than 14 days ahead' });
     }
@@ -253,7 +259,8 @@ router.post('/takeaway', async (req, res) => {
       return res.status(400).json({ error: 'Cart items are required' });
     }
 
-    const parsedDate = parseAndValidateBookingDate(bookingDateStr);
+    // Takeaway allows same-day booking (minDaysAhead = 0)
+    const parsedDate = parseAndValidateBookingDate(bookingDateStr, 0);
     const { orderItems, ...totals } = await calculateServerTotals(items);
 
     // Use transaction with row-level locking to prevent overselling
@@ -267,18 +274,18 @@ router.post('/takeaway', async (req, res) => {
         throw new Error('SLOT_FULL');
       }
 
-      // Get outlet operating hours
+      // Get outlet takeaway operating hours
       const outlet = await tx.outlet.findUnique({
         where: { id: outletId },
-        select: { openTime: true, closeTime: true },
+        select: { takeawayOpenTime: true, takeawayCloseTime: true },
       });
 
       if (!outlet) {
         throw new Error('OUTLET_NOT_FOUND');
       }
 
-      // Validate time is within outlet hours
-      if (!isTimeWithinOutletHours(timeSlot.time, outlet.openTime, outlet.closeTime)) {
+      // Validate time is within takeaway hours
+      if (!isTimeWithinOutletHours(timeSlot.time, outlet.takeawayOpenTime, outlet.takeawayCloseTime)) {
         throw new Error('OUTSIDE_HOURS');
       }
 
@@ -349,6 +356,9 @@ router.post('/takeaway', async (req, res) => {
     if (error.message === 'PAST_DATE') {
       return res.status(400).json({ error: 'Cannot book for past dates' });
     }
+    if (error.message === 'SAME_DAY_BOOKING') {
+      return res.status(400).json({ error: 'Invalid booking date. Please try another date.' });
+    }
     if (error.message === 'DATE_TOO_FAR') {
       return res.status(400).json({ error: 'Cannot book more than 14 days ahead' });
     }
@@ -375,7 +385,7 @@ router.post('/delivery', async (req, res) => {
       return res.status(400).json({ error: 'Cart items are required' });
     }
 
-    const parsedDate = parseAndValidateBookingDate(bookingDateStr);
+    const parsedDate = parseAndValidateBookingDate(bookingDateStr, 1);
 
     const outlet = await prisma.outlet.findUnique({ where: { id: outletId } });
     if (!outlet) {
@@ -420,6 +430,9 @@ router.post('/delivery', async (req, res) => {
   } catch (error: any) {
     if (error.message === 'PAST_DATE') {
       return res.status(400).json({ error: 'Cannot book for past dates' });
+    }
+    if (error.message === 'SAME_DAY_BOOKING') {
+      return res.status(400).json({ error: 'Delivery booking must be made at least 1 day in advance. Please select tomorrow or a later date.' });
     }
     if (error.message === 'DATE_TOO_FAR') {
       return res.status(400).json({ error: 'Cannot book more than 14 days ahead' });
