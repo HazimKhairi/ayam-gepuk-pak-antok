@@ -61,7 +61,7 @@ export const createBill = async (order: Order, paymentId: string): Promise<BillR
       billPriceSetting: '1',
       billPayorInfo: '1',
       billAmount: Math.round(Number(order.total) * 100).toString(), // Convert to cents
-      billReturnUrl: `${FRONTEND_URL}/confirmation/${order.orderNo}`,
+      billReturnUrl: `${FRONTEND_URL}/verifying?order_id=${order.orderNo}`,
       billCallbackUrl: `${BACKEND_URL}/api/v1/payments/callback`,
       billExternalReferenceNo: order.orderNo,
       billTo: order.customerName,
