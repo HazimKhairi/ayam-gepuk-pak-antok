@@ -8,11 +8,20 @@ const CACHE_KEY = 'settlement_data';
 /**
  * Sync settlement data from ToyyibPay by checking each SUCCESS payment.
  *
- * IMPORTANT: billpaymentStatus "3" is AMBIGUOUS in getBillTransactions API.
- * It can mean "Pending Settlement" (paid) OR "Unsuccessful" (failed).
- * We only count status "3" as paid if:
- *   - No status "4" (failed) transactions exist for the same bill
- *   - The transaction has a valid billpaymentInvoiceNo
+ * getBillTransactions returns multiple transactions per bill. Each has:
+ *   - billpaymentStatus: "1" (Successful), "3" (ambiguous), "4" (Failed)
+ *   - billpaymentAmount: bill amount (does NOT include RM1 fee)
+ *   - transactionCharge: RM1.00 fee (separate from billpaymentAmount)
+ *   - billpaymentSettlement: "Pending Settlement", "Done", or empty
+ *
+ * IMPORTANT FINDINGS (verified from actual API data):
+ *   - Status "1" = reliably paid. ToyyibPay counts these in their dashboard.
+ *   - Status "3" = UNRELIABLE for settlement. Even with transactionCharge > 0
+ *     and "Pending Settlement", many are expired/cancelled and NOT counted by
+ *     ToyyibPay dashboard. Only status "1" matches ToyyibPay's numbers.
+ *   - Status "4" = failed attempt (charge 0, empty settlement).
+ *   - billpaymentAmount = gross bill amount. ToyyibPay dashboard shows
+ *     NET settlement (after RM1 fee), so we subtract RM1 per transaction.
  */
 export async function syncSettlementData() {
   console.log('💰 Settlement sync started...');
@@ -42,25 +51,20 @@ export async function syncSettlementData() {
       const txns = result.transactions;
       if (!Array.isArray(txns)) continue;
 
-      // Per ToyyibPay API (confirmed via omnipay-toyyibpay library):
-      //   billpaymentStatus 1 = Successful transaction
-      //   billpaymentStatus 2 = Pending transaction
-      //   billpaymentStatus 3 = Unsuccessful transaction (NOT "pending settlement"!)
-      //   billpaymentStatus 4 = Pending (alternative)
-      // Only count status "1" as paid.
-      const settledTxn = txns.find((t: any) => t.billpaymentStatus === '1');
+      // Only count status "1" (definitively successful).
+      // Status "3" is unreliable for settlement — see docblock above.
+      const paidTxn = txns.find((t: any) => t.billpaymentStatus === '1');
 
-      if (!settledTxn) {
+      if (!paidTxn) {
         skipped++;
         continue;
       }
 
-      const paidTxn = settledTxn;
-
-      // billpaymentAmount includes RM1 online banking fee charged to customer.
-      // Subtract RM1 to get the net settlement amount (matches ToyyibPay dashboard).
-      const amount = Number(paidTxn.billpaymentAmount) - 1;
-      const isSettled = paidTxn.billpaymentSettlement?.toLowerCase().includes('done');
+      // billpaymentAmount = gross. Subtract RM1 fee to match ToyyibPay
+      // dashboard which shows net settlement amounts.
+      const fee = Number(paidTxn.transactionCharge || 1);
+      const amount = Number(paidTxn.billpaymentAmount) - fee;
+      const isSettled = (paidTxn.billpaymentSettlement || '').toLowerCase().includes('done');
 
       if (isSettled) {
         settlementReceived += amount;

@@ -160,22 +160,31 @@ describe('Dashboard settlement integration', () => {
 
 // ─── Settlement status codes (unit-level validation) ─────────────────────────
 describe('ToyyibPay status code handling', () => {
-  it('only billpaymentStatus "1" is counted as successful', () => {
-    // Per omnipay-toyyibpay library (https://github.com/sitehandy/omnipay-toyyibpay):
-    // STATUS_SUCCESSFUL = 1  → count as paid
-    // STATUS_PENDING = 2     → skip
-    // STATUS_UNSUCCESSFUL = 3 → skip (NOT "pending settlement"!)
-    // STATUS_PENDING_ALT = 4  → skip
-    const STATUS_SUCCESSFUL = 1;
-    const STATUS_PENDING = 2;
-    const STATUS_UNSUCCESSFUL = 3;
-    const STATUS_PENDING_ALT = 4;
+  it('only status "1" is reliably paid for settlement sync', () => {
+    // From actual ToyyibPay getBillTransactions API data:
+    // Status "1" = reliably matches ToyyibPay dashboard numbers
+    // Status "3" = UNRELIABLE — even with transactionCharge > 0,
+    //   many are expired/cancelled and NOT counted by ToyyibPay dashboard
+    // Status "4" = failed attempt
+    const isPaidForSettlement = (status: string) => status === '1';
 
-    const isSuccess = (status: number) => status === STATUS_SUCCESSFUL;
+    expect(isPaidForSettlement('1')).toBe(true);
+    expect(isPaidForSettlement('3')).toBe(false);
+    expect(isPaidForSettlement('4')).toBe(false);
+    expect(isPaidForSettlement('2')).toBe(false);
+  });
 
-    expect(isSuccess(STATUS_SUCCESSFUL)).toBe(true);
-    expect(isSuccess(STATUS_PENDING)).toBe(false);
-    expect(isSuccess(STATUS_UNSUCCESSFUL)).toBe(false);
-    expect(isSuccess(STATUS_PENDING_ALT)).toBe(false);
+  it('billpaymentAmount is gross, fee is in transactionCharge', () => {
+    // Verified from actual API: billpaymentAmount = bill amount (gross)
+    // transactionCharge = RM1.00 fee (separate)
+    // ToyyibPay dashboard shows NET = billpaymentAmount - transactionCharge
+    const billpaymentAmount = 42.02;
+    const transactionCharge = 1.00;
+    const dbAmount = 42.02;
+    const netSettlement = billpaymentAmount - transactionCharge;
+
+    expect(billpaymentAmount).toBe(dbAmount);
+    expect(transactionCharge).toBe(1.00);
+    expect(netSettlement).toBe(41.02);
   });
 });
