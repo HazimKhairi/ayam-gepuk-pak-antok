@@ -1,73 +1,50 @@
-import Redis from 'ioredis';
+// Simple in-memory cache fallback (no Redis dependency required)
+// For production with Redis, install ioredis and replace this implementation
 
-// Create Redis client
-const redis = new Redis({
-  host: '127.0.0.1',
-  port: 6379,
-  maxRetriesPerRequest: 3,
-  retryStrategy: (times: number) => {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  },
-  lazyConnect: true,
-});
+interface CacheValue {
+  value: any;
+  expiry: number;
+}
 
-// Handle Redis connection events
-redis.on('connect', () => {
-  console.log('✅ Redis connected');
-});
+class MemoryCache {
+  private store: Map<string, CacheValue> = new Map();
 
-redis.on('error', (err) => {
-  console.error('❌ Redis error:', err.message);
-});
-
-// Connect to Redis
-redis.connect().catch(err => {
-  console.error('Failed to connect to Redis:', err.message);
-});
-
-// Cache helper functions
-export const cache = {
-  // Get cached data
   async get<T>(key: string): Promise<T | null> {
-    try {
-      const data = await redis.get(key);
-      return data ? JSON.parse(data) : null;
-    } catch (error) {
-      console.error(`Cache get error for key ${key}:`, error);
+    const item = this.store.get(key);
+    if (!item) return null;
+
+    if (Date.now() > item.expiry) {
+      this.store.delete(key);
       return null;
     }
-  },
 
-  // Set cached data with TTL (in seconds)
+    return item.value;
+  }
+
   async set(key: string, value: any, ttl: number): Promise<void> {
-    try {
-      await redis.setex(key, ttl, JSON.stringify(value));
-    } catch (error) {
-      console.error(`Cache set error for key ${key}:`, error);
-    }
-  },
+    this.store.set(key, {
+      value,
+      expiry: Date.now() + (ttl * 1000),
+    });
+  }
 
-  // Delete cached data
   async del(key: string): Promise<void> {
-    try {
-      await redis.del(key);
-    } catch (error) {
-      console.error(`Cache del error for key ${key}:`, error);
-    }
-  },
+    this.store.delete(key);
+  }
 
-  // Clear cache by pattern
   async clear(pattern: string): Promise<void> {
-    try {
-      const keys = await redis.keys(pattern);
-      if (keys.length > 0) {
-        await redis.del(...keys);
+    // Simple pattern matching (supports * wildcard at end)
+    const regex = new RegExp('^' + pattern.replace('*', '.*'));
+    for (const key of this.store.keys()) {
+      if (regex.test(key)) {
+        this.store.delete(key);
       }
-    } catch (error) {
-      console.error(`Cache clear error for pattern ${pattern}:`, error);
     }
   }
-};
+}
 
-export default redis;
+export const cache = new MemoryCache();
+
+console.log('⚠️ Using in-memory cache (install ioredis for Redis support)');
+
+export default null;

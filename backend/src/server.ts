@@ -60,20 +60,22 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Global rate limiter — 200 requests per minute per IP
+const isTest = process.env.NODE_ENV === 'test';
+
+// Global rate limiter — 200 requests per minute per IP (disabled in test)
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
+  max: isTest ? 10000 : 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' },
 });
 app.use(globalLimiter);
 
-// Strict rate limiter for auth endpoints — 10 attempts per 15 minutes
+// Strict rate limiter for auth endpoints — 10 attempts per 15 minutes (disabled in test)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: isTest ? 10000 : 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many login attempts, please try again in 15 minutes' },
@@ -117,8 +119,8 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start server
-const server = app.listen(PORT, async () => {
+// Start server (skip in test environment — supertest handles binding)
+const server = isTest ? null : app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 
@@ -129,11 +131,16 @@ const server = app.listen(PORT, async () => {
 // Graceful shutdown
 const shutdown = async (signal: string) => {
   console.log(`${signal} received. Shutting down gracefully...`);
-  server.close(async () => {
+  const close = async () => {
     await prisma.$disconnect();
     console.log('Server closed.');
     process.exit(0);
-  });
+  };
+  if (server) {
+    server.close(close);
+  } else {
+    await close();
+  }
   // Force close after 10s
   setTimeout(() => {
     console.error('Forced shutdown after timeout');

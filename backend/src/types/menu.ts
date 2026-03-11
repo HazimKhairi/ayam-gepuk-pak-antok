@@ -33,6 +33,7 @@ export interface OrderItemCustomizations {
   ayamType?: SelectedCustomization;
   sambalLevel?: SelectedCustomization;
   drink?: SelectedCustomization;
+  extras?: SelectedCustomization[];
 }
 
 export interface OrderItem {

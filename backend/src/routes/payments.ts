@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import prisma from '../config/prisma';
 import { sendConfirmationEmail, scheduleReminder } from '../utils/email';
 import { getBillTransactions } from '../utils/toyyibpay';
+import { requireAdmin } from '../middlewares/auth';
 
 const router = Router();
 
@@ -39,21 +40,38 @@ router.post('/callback', async (req, res) => {
 
     console.log('📦 Found payment for order:', payment.order.orderNo);
 
-    // Prevent duplicate processing
+    // Determine new payment status from webhook
+    // Webhook status_id: 1=Settled(success), 3=Pending Settlement(success), 4=Failed
+    const incomingStatus = (status_id === '1' || status_id === '3') ? 'SUCCESS' :
+                           status_id === '4' ? 'FAILED' : 'PENDING';
+
+    // Prevent duplicate processing — but ALWAYS allow SUCCESS to override FAILED
+    // (customer may retry after a failed attempt, and the success webhook arrives after the fail one)
     if (payment.status === 'SUCCESS') {
-      console.log('⚠️ Payment already processed:', payment.order.orderNo);
+      console.log('⚠️ Payment already SUCCESS, skipping:', payment.order.orderNo);
       return res.json({ success: true, message: 'Already processed' });
     }
+    if (payment.status === 'FAILED' && incomingStatus !== 'SUCCESS') {
+      console.log('⚠️ Payment already FAILED, ignoring non-success webhook:', payment.order.orderNo);
+      return res.json({ success: true, message: 'Already processed' });
+    }
+    if (payment.status === 'FAILED' && incomingStatus === 'SUCCESS') {
+      console.log('🔄 SUCCESS webhook overriding previous FAILED status for:', payment.order.orderNo);
+    }
 
-    // Update payment status
-    const paymentStatus = status_id === '1' ? 'SUCCESS' : status_id === '3' ? 'FAILED' : 'PENDING';
-    console.log(`💳 Payment status: ${paymentStatus} (status_id: ${status_id})`);
+    const paymentStatus = incomingStatus;
+    // Map webhook status_id to ToyyibPay transaction status code
+    // Webhook 1,3 → txn "1" (Successful), Webhook 4 → txn "3" (Unsuccessful), Webhook 2 → txn "2" (Pending)
+    const txnStatusCode = paymentStatus === 'SUCCESS' ? '1' :
+                          paymentStatus === 'FAILED' ? '3' : '2';
+    console.log(`Payment status: ${paymentStatus} (status_id: ${status_id})`);
 
     await prisma.payment.update({
       where: { id: payment.id },
       data: {
         transactionId: transaction_id,
         status: paymentStatus,
+        statusCode: txnStatusCode,
         paidAt: paymentStatus === 'SUCCESS' ? new Date() : null,
         callbackData: req.body,
       },
@@ -154,6 +172,15 @@ router.post('/verify/:orderNo', async (req, res) => {
       });
     }
 
+    // Already failed/cancelled — don't re-verify, tell frontend immediately
+    if (order.payment.status === 'FAILED' || order.status === 'CANCELLED') {
+      return res.json({
+        success: false,
+        failed: true,
+        message: 'Payment was declined or cancelled. Please place a new order.',
+      });
+    }
+
     console.log(`🔍 Verifying payment for order ${order.orderNo} with billCode ${order.payment.billCode}`);
 
     // Get transaction status from ToyyibPay
@@ -167,23 +194,33 @@ router.post('/verify/:orderNo', async (req, res) => {
       });
     }
 
-    // Find successful transaction (billpaymentStatus = "1")
-    const successfulTxn = result.transactions.find((txn: any) => txn.billpaymentStatus === '1');
+    // Find successful transaction
+    // IMPORTANT: Only trust status "1" (fully settled) from polling.
+    // Status "3" is AMBIGUOUS in getBillTransactions — can mean "Pending Settlement" (paid)
+    // OR "Unsuccessful" (failed). We CANNOT distinguish reliably.
+    // Only the webhook (pushed by ToyyibPay) can be trusted for status "3".
+    // So here we only auto-confirm on status "1". For status "3", we wait for webhook.
+    const settledTxn = result.transactions.find((txn: any) =>
+      txn.billpaymentStatus === '1'
+    );
 
-    if (successfulTxn) {
-      console.log(`✅ Found successful payment for ${order.orderNo}:`, successfulTxn.billpaymentInvoiceNo);
+    if (settledTxn) {
+      console.log(`✅ Found settled payment for ${order.orderNo}:`, settledTxn.billpaymentInvoiceNo);
 
       // Update payment status
       await prisma.payment.update({
         where: { id: order.payment.id },
         data: {
           status: 'SUCCESS',
-          transactionId: successfulTxn.billpaymentInvoiceNo,
+          statusCode: '1',
+          statusReason: 'Successful',
+          transactionId: settledTxn.billpaymentInvoiceNo,
           paidAt: new Date(),
           callbackData: {
             verified: true,
             verifiedAt: new Date().toISOString(),
-            transaction: successfulTxn
+            transaction: settledTxn,
+            allTransactions: result.transactions,
           },
         },
       });
@@ -216,23 +253,68 @@ router.post('/verify/:orderNo', async (req, res) => {
         order: updatedOrder,
         wasVerified: true
       });
-    } else {
-      console.log(`❌ No successful payment found for ${order.orderNo}`);
+    }
+
+    // Check for status "3" — ambiguous, could be paid or failed
+    const status3Txn = result.transactions.find((txn: any) => txn.billpaymentStatus === '3');
+
+    // Check if ALL transactions are status "4" (definitively failed)
+    const allFailed = result.transactions.every((txn: any) => txn.billpaymentStatus === '4');
+
+    if (allFailed) {
+      await prisma.$transaction([
+        prisma.payment.update({
+          where: { id: order.payment.id },
+          data: {
+            status: 'FAILED',
+            statusCode: '3',
+            statusReason: 'All transactions failed',
+            callbackData: {
+              verified: true,
+              verifiedAt: new Date().toISOString(),
+              allTransactions: result.transactions,
+            },
+          },
+        }),
+        prisma.order.update({
+          where: { id: order.id },
+          data: { status: 'CANCELLED' },
+        }),
+      ]);
+      console.log(`❌ All transactions failed for ${order.orderNo}, order cancelled`);
+
       return res.json({
         success: false,
-        message: 'No successful payment found',
-        transactions: result.transactions,
+        failed: true,
+        message: 'Payment was declined by the bank. Please place a new order.',
+      });
+    }
+
+    if (status3Txn) {
+      // Status "3" found but NOT settled yet — don't auto-confirm.
+      // Tell frontend to keep waiting. The webhook will confirm if payment is real.
+      console.log(`⏳ Status "3" (ambiguous) for ${order.orderNo} — waiting for webhook confirmation`);
+      return res.json({
+        success: false,
+        message: 'Payment is being processed by the bank. Please wait a moment.',
         stillPending: true
       });
     }
+
+    // No settled, no status 3, not all failed — genuinely still pending
+    return res.json({
+      success: false,
+      message: 'Payment is still being processed',
+      stillPending: true
+    });
   } catch (error: any) {
     console.error('Payment verification error:', error);
     res.status(500).json({ error: 'Failed to verify payment' });
   }
 });
 
-// POST /api/v1/payments/complete/:orderNo - Manual payment completion for testing
-router.post('/complete/:orderNo', async (req, res) => {
+// POST /api/v1/payments/complete/:orderNo - Manual payment completion (admin only)
+router.post('/complete/:orderNo', requireAdmin, async (req, res) => {
   try {
     const order = await prisma.order.findUnique({
       where: { orderNo: req.params.orderNo },

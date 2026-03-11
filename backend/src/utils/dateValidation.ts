@@ -4,9 +4,10 @@ const MAX_BOOKING_DAYS_AHEAD = 14;
  * Parse and validate a booking date string (YYYY-MM-DD).
  * Defaults to today if no dateString provided.
  * @param minDaysAhead - Minimum days in advance required (0 = today allowed, 1 = tomorrow earliest)
- * Throws 'PAST_DATE', 'SAME_DAY_BOOKING', or 'DATE_TOO_FAR' on invalid dates.
+ * @param cutoffTime - Optional cutoff time in HH:mm format for same-day bookings (e.g., "18:00")
+ * Throws 'PAST_DATE', 'SAME_DAY_BOOKING', 'CUTOFF_TIME_PASSED', or 'DATE_TOO_FAR' on invalid dates.
  */
-export function parseAndValidateBookingDate(dateString?: string, minDaysAhead: number = 0): Date {
+export function parseAndValidateBookingDate(dateString?: string, minDaysAhead: number = 0, cutoffTime?: string): Date {
   const date = dateString ? new Date(dateString) : new Date();
   date.setHours(0, 0, 0, 0);
 
@@ -25,6 +26,18 @@ export function parseAndValidateBookingDate(dateString?: string, minDaysAhead: n
   minDate.setDate(minDate.getDate() + minDaysAhead);
   if (date < minDate) {
     throw new Error('SAME_DAY_BOOKING');
+  }
+
+  // Check cutoff time for same-day bookings
+  if (cutoffTime && date.getTime() === today.getTime()) {
+    const currentTime = new Date();
+    const [cutoffHour, cutoffMinute] = cutoffTime.split(':').map(Number);
+    const cutoffDateTime = new Date();
+    cutoffDateTime.setHours(cutoffHour, cutoffMinute, 0, 0);
+
+    if (currentTime >= cutoffDateTime) {
+      throw new Error('CUTOFF_TIME_PASSED');
+    }
   }
 
   const maxDate = new Date(today);

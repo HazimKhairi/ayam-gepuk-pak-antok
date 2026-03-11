@@ -16,6 +16,69 @@ const SST_RATE = 0.06;
 // Booking fee (RM1)
 const BOOKING_FEE = 1.00;
 
+/**
+ * Check for duplicate orders from same customer.
+ * 1. PENDING orders within last 30 minutes → return existing payment URL
+ * 2. COMPLETED orders for same outlet+date+timeslot → block with error
+ * Prevents double-submit AND double-booking (e.g. customer pays twice).
+ */
+async function checkDuplicateOrder(
+  customerPhone: string,
+  outletId: string,
+  fulfillmentType: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY',
+  bookingDate: Date,
+  timeSlotId?: string
+): Promise<{ isDuplicate: boolean; paymentUrl?: string; order?: any; alreadyCompleted?: boolean } | null> {
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+
+  // 1. Check for recent PENDING order (double-submit protection)
+  const pendingOrder = await prisma.order.findFirst({
+    where: {
+      customerPhone,
+      outletId,
+      fulfillmentType,
+      bookingDate,
+      status: 'PENDING',
+      createdAt: { gte: thirtyMinutesAgo },
+    },
+    include: { payment: true, outlet: true, timeSlot: true },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (pendingOrder?.payment?.billCode) {
+    const toyyibpayUrl = process.env.TOYYIBPAY_URL || 'https://dev.toyyibpay.com';
+    return {
+      isDuplicate: true,
+      paymentUrl: `${toyyibpayUrl}/${pendingOrder.payment.billCode}`,
+      order: pendingOrder,
+    };
+  }
+
+  // 2. Check for COMPLETED order on same outlet+date+timeslot (double-booking protection)
+  const completedOrder = await prisma.order.findFirst({
+    where: {
+      customerPhone,
+      outletId,
+      fulfillmentType,
+      bookingDate,
+      status: 'COMPLETED',
+      ...(timeSlotId ? { timeSlotId } : {}),
+    },
+    include: { outlet: true, timeSlot: true },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (completedOrder) {
+    return {
+      isDuplicate: true,
+      alreadyCompleted: true,
+      order: completedOrder,
+    };
+  }
+
+  return null;
+}
+
 // Generate order number
 const generateOrderNo = () => {
   const date = new Date();
@@ -126,8 +189,27 @@ router.post('/dine-in', async (req, res) => {
       return res.status(400).json({ error: 'Number of guests must be between 1 and 50' });
     }
 
-    // Dine-in allows same-day booking (minDaysAhead = 0)
-    const parsedDate = parseAndValidateBookingDate(bookingDateStr, 0);
+    // Fetch outlet's dine-in cutoff time
+    const outletForCutoff = await prisma.outlet.findUnique({
+      where: { id: outletId },
+      select: { dineInCutoffTime: true },
+    });
+    const cutoffTime = outletForCutoff?.dineInCutoffTime || '18:00'; // Default to 6 PM
+
+    // Dine-in allows same-day booking (minDaysAhead = 0) but checks cutoff time
+    const parsedDate = parseAndValidateBookingDate(bookingDateStr, 0, cutoffTime);
+
+    // Check for duplicate order (prevents double-submit AND double-booking)
+    const duplicate = await checkDuplicateOrder(customerPhone, outletId, 'DINE_IN', parsedDate, timeSlotId);
+    if (duplicate) {
+      if (duplicate.alreadyCompleted) {
+        console.log(`🚫 Customer ${customerPhone} already has COMPLETED dine-in order for this slot`);
+        return res.status(409).json({ error: 'Anda sudah mempunyai tempahan yang berjaya untuk slot ini. Sila semak pesanan anda.' });
+      }
+      console.log(`⚠️ Duplicate dine-in order detected for ${customerPhone}, returning existing payment URL`);
+      return res.json({ success: true, order: duplicate.order, paymentUrl: duplicate.paymentUrl });
+    }
+
     const { orderItems, ...totals } = await calculateServerTotals(items);
 
     // Use serializable transaction to prevent overbooking capacity
@@ -162,7 +244,7 @@ router.post('/dine-in', async (req, res) => {
           timeSlotId,
           bookingDate: parsedDate,
           fulfillmentType: 'DINE_IN',
-          status: { in: ['COMPLETED'] }, // PENDING orders don't count until paid
+          status: { in: ['PENDING', 'COMPLETED'] },
         },
         _sum: { paxCount: true },
       });
@@ -233,6 +315,9 @@ router.post('/dine-in', async (req, res) => {
     if (error.message === 'SAME_DAY_BOOKING') {
       return res.status(400).json({ error: 'Invalid booking date. Please try another date.' });
     }
+    if (error.message === 'CUTOFF_TIME_PASSED') {
+      return res.status(400).json({ error: 'Same-day booking time has passed. Please book for tomorrow or later.' });
+    }
     if (error.message === 'DATE_TOO_FAR') {
       return res.status(400).json({ error: 'Cannot book more than 14 days ahead' });
     }
@@ -261,6 +346,18 @@ router.post('/takeaway', async (req, res) => {
 
     // Takeaway allows same-day booking (minDaysAhead = 0)
     const parsedDate = parseAndValidateBookingDate(bookingDateStr, 0);
+
+    // Check for duplicate order (prevents double-submit AND double-booking)
+    const duplicate = await checkDuplicateOrder(customerPhone, outletId, 'TAKEAWAY', parsedDate, timeSlotId);
+    if (duplicate) {
+      if (duplicate.alreadyCompleted) {
+        console.log(`🚫 Customer ${customerPhone} already has COMPLETED takeaway order for this slot`);
+        return res.status(409).json({ error: 'Anda sudah mempunyai tempahan yang berjaya untuk slot ini. Sila semak pesanan anda.' });
+      }
+      console.log(`⚠️ Duplicate takeaway order detected for ${customerPhone}, returning existing payment URL`);
+      return res.json({ success: true, order: duplicate.order, paymentUrl: duplicate.paymentUrl });
+    }
+
     const { orderItems, ...totals } = await calculateServerTotals(items);
 
     // Use transaction with row-level locking to prevent overselling
@@ -294,7 +391,7 @@ router.post('/takeaway', async (req, res) => {
         where: {
           timeSlotId,
           bookingDate: parsedDate,
-          status: { in: ['COMPLETED'] }, // PENDING orders don't count until paid
+          status: { in: ['PENDING', 'COMPLETED'] },
         },
       });
 
@@ -386,6 +483,17 @@ router.post('/delivery', async (req, res) => {
     }
 
     const parsedDate = parseAndValidateBookingDate(bookingDateStr, 1);
+
+    // Check for duplicate order (prevents double-submit AND double-booking)
+    const duplicate = await checkDuplicateOrder(customerPhone, outletId, 'DELIVERY', parsedDate);
+    if (duplicate) {
+      if (duplicate.alreadyCompleted) {
+        console.log(`🚫 Customer ${customerPhone} already has COMPLETED delivery order for this date`);
+        return res.status(409).json({ error: 'Anda sudah mempunyai tempahan penghantaran yang berjaya untuk tarikh ini. Sila semak pesanan anda.' });
+      }
+      console.log(`⚠️ Duplicate delivery order detected for ${customerPhone}, returning existing payment URL`);
+      return res.json({ success: true, order: duplicate.order, paymentUrl: duplicate.paymentUrl });
+    }
 
     const outlet = await prisma.outlet.findUnique({ where: { id: outletId } });
     if (!outlet) {

@@ -95,7 +95,7 @@ router.get('/:id/tables', async (req, res) => {
         outletId: req.params.id,
         fulfillmentType: 'DINE_IN',
         bookingDate: bookingDate,
-        status: { in: ['PENDING'] },
+        status: { in: ['PENDING', 'COMPLETED'] },
       },
       select: {
         tableId: true,
@@ -184,7 +184,7 @@ router.get('/:id/slots', async (req, res) => {
           outletId: req.params.id,
           bookingDate: bookingDate,
           fulfillmentType: 'DINE_IN',
-          status: { in: ['PENDING'] },
+          status: { in: ['PENDING', 'COMPLETED'] },
           timeSlotId: { not: null },
         },
         _sum: { paxCount: true },
@@ -201,10 +201,13 @@ router.get('/:id/slots', async (req, res) => {
         .map(slot => {
           const currentPax = paxMap.get(slot.id) || 0;
           const remainingPax = outlet.maxCapacity - currentPax;
-          let isDisabled = !isTimeWithinOutletHours(slot.time, outlet.dineInOpenTime, outlet.dineInCloseTime);
+
+          // For dine-in: Admin controls availability via isActiveForDineIn checkbox
+          // Don't check outlet hours - let admin decide which slots are available
+          let isDisabled = false;
 
           // For same-day bookings, disable past time slots
-          if (isToday && !isDisabled) {
+          if (isToday) {
             const [slotHour, slotMinute] = slot.time.split(':').map(Number);
             const slotDateTime = new Date(now);
             slotDateTime.setHours(slotHour, slotMinute, 0, 0);
@@ -244,7 +247,7 @@ router.get('/:id/slots', async (req, res) => {
       where: {
         outletId: req.params.id,
         bookingDate: bookingDate,
-        status: { in: ['PENDING'] },
+        status: { in: ['PENDING', 'COMPLETED'] },
         timeSlotId: { not: null },
       },
       _count: true,

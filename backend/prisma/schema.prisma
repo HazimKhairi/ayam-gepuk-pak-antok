@@ -19,9 +19,15 @@ model Outlet {
   googleMapsUrl   String?  @db.VarChar(500)
   openTime        String   @db.VarChar(10) @default("10:00")
   closeTime       String   @db.VarChar(10) @default("17:00")
+  dineInOpenTime  String   @db.VarChar(10) @default("17:00")
+  dineInCloseTime String   @db.VarChar(10) @default("23:00")
+  dineInCutoffTime String  @db.VarChar(10) @default("18:00")
+  takeawayOpenTime  String @db.VarChar(10) @default("19:00")
+  takeawayCloseTime String @db.VarChar(10) @default("23:00")
   isActive        Boolean  @default(true)
   deliveryFee     Decimal  @db.Decimal(10, 2) @default(0)
-  maxCapacity     Int      @default(100)
+  maxCapacity         Int      @default(100)
+  maxTakeawayOrders   Int      @default(30)
   deliveryEnabled Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -62,14 +68,22 @@ enum TableStatus {
   MAINTENANCE
 }
 
-// TimeSlot model - takeaway time slots per outlet
+// TimeSlot model - time slots per outlet for all fulfillment types
 model TimeSlot {
   id          String   @id @default(uuid())
   outletId    String
   time        String   @db.VarChar(10)
   maxOrders   Int      @default(10)
   currentOrders Int    @default(0)
+
+  // Separate active flags for each fulfillment type
+  isActiveForDineIn    Boolean  @default(true)
+  isActiveForTakeaway  Boolean  @default(true)
+  isActiveForDelivery  Boolean  @default(true)
+
+  // DEPRECATED: kept for backward compatibility during migration
   isActive    Boolean  @default(true)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -151,6 +165,8 @@ model Payment {
   transactionId String?       @db.VarChar(100)
   amount        Decimal       @db.Decimal(10, 2)
   status        PaymentStatus @default(PENDING)
+  statusCode    String?       @db.VarChar(10)
+  statusReason  String?       @db.VarChar(255)
   paidAt        DateTime?
   callbackData  Json?
   createdAt     DateTime      @default(now())

@@ -8,6 +8,8 @@ Ramadhan Reservation System for Ayam Gepuk Pak Antok - a restaurant chain with 6
 
 **System Capacity**: 647 total pax across all outlets. Menu has 17 items across 3 categories (Set Menu, Drinks, Ala Carte).
 
+**Payment Flow (Summary)**: ToyyibPay → webhook to backend (primary) + redirect to `/verifying` page (backup) → homepage with `OrderSuccessModal`.
+
 ## Development Commands
 
 ### Backend (Express.js + Prisma + MySQL)
@@ -22,6 +24,7 @@ npm run db:push             # Push schema to database (dev only)
 npm run db:seed             # Seed database with initial data (WARNING: clears ALL data)
 npm run db:studio           # Open Prisma Studio GUI
 npm run update:sets-simple  # Update Set menu items with customization options
+npm run migrate:customization  # Add customization fields to existing menu items
 ```
 
 ### Frontend (Next.js 16 + React 19 + Tailwind 4)
@@ -77,6 +80,8 @@ Auth routes get a stricter rate limiter: 10 attempts per 15 minutes.
 - `backend/src/utils/toyyibpay.ts` - Payment bill creation; auto-falls back to mock sandbox mode when credentials are placeholder values
 - `backend/src/utils/email.ts` - Nodemailer confirmation emails + 1-hour reminder scheduling
 - `backend/src/utils/cleanupOrders.ts` - Auto-cleanup of abandoned orders on server startup
+- `backend/src/utils/scheduler.ts` - Periodic cleanup scheduler (runs cleanup every 1 hour via setInterval)
+- `backend/src/utils/dateValidation.ts` - `parseAndValidateBookingDate()` + `isTimeWithinOutletHours()` helpers
 - `backend/prisma/seed.ts` - Seeds 6 outlets with Google Maps URLs, 12 tables per outlet, time slots (dine-in: 10am-5pm, takeaway: 2pm-11pm), master admin, 3 categories, 17 menu items, reviews, and system settings including social media links
 - `backend/src/routes/categories.ts` - Category CRUD with display ordering and slug generation
 
@@ -107,7 +112,8 @@ Auth routes get a stricter rate limiter: 10 attempts per 15 minutes.
 - `src/app/admin/login/` - Separate admin login page
 - `src/app/admin/categories/` - Category management (create/edit/reorder categories)
 - `src/app/checkout/` - Universal cart checkout for all fulfillment types
-- `src/app/confirmation/[orderNo]/` and `src/app/receipt/[orderNo]/` - Post-payment pages
+- `src/app/confirmation/[orderNo]/` and `src/app/receipt/[orderNo]/` - Post-payment pages (dynamic routes; use `_` fallback in static export)
+- `src/app/verifying/` - Payment verification page: verifies payment via `/api/v1/payments/verify/:orderNo`, then redirects to `/?orderSuccess=true&orderNo=...`
 
 **API clients:**
 - `src/services/api.ts` - Main client with `fetchApi<T>()` wrapper, exports `outletApi`, `reservationApi`, `paymentApi`, `reviewApi`. Uses `getAuthHeaders()` that checks both `adminToken` and `customerToken`. Also exports `getImageUrl()` for resolving backend image paths.
@@ -133,6 +139,7 @@ Base URL from `NEXT_PUBLIC_API_URL` env var (default `http://localhost:3001/api/
 - **MenuItemImage component**: Use for all menu item images (includes fallback to `/default-image.png` on error)
 - **Cart and Order Summary**: Display text-only without images (design preference)
 - **Admin Dashboard Auto-Refresh**: Dashboard automatically refreshes every 30 seconds with toggle control and manual refresh button. Live "Updated Xs ago" indicator updates every second. Sales reports require manual refresh to prevent disruption during analysis.
+- **OrderSuccessModal**: Displays on the homepage when `?orderSuccess=true&orderNo=...` query params are present (set by the `/verifying` page). Must be wrapped in `<Suspense>` because it uses `useSearchParams()`.
 
 **Menu Customization System:**
 - `CustomizationModal` component handles customization selection for menu items
@@ -169,7 +176,7 @@ Key enums: `TableStatus` (AVAILABLE/BOOKED/OCCUPIED/MAINTENANCE), `OrderStatus` 
 
 ## Business Logic Constraints
 
-- **Same-day only**: Bookings restricted to current date (date normalized with `setHours(0,0,0,0)`)
+- **Booking date window**: Bookings allowed from today up to 14 days ahead. Validated via `parseAndValidateBookingDate()` in `dateValidation.ts` (throws `PAST_DATE` or `DATE_TOO_FAR`). Date is normalized with `setHours(0,0,0,0)`.
 - **SST calculation**: 6% service tax on all orders (both backend computation and frontend CartContext)
 - **Server-side price calculation**: Reservation routes compute prices from database — never trust client-submitted prices
 - **Serializable transactions**: Dine-in pax capacity check and takeaway slot booking use serializable isolation to prevent race conditions
@@ -213,11 +220,15 @@ Frontend `.env.local`:
 - **NO GRADIENTS allowed** - client preference is solid colors only for professional look
 - User speaks Malay (Bahasa Melayu) but documentation should remain in English
 - Frontend is configured for static export (`output: 'export'`) - dynamic features requiring server runtime must use client-side data fetching
+- **`useSearchParams()` requires Suspense in static export**: Any component using `useSearchParams` must be a `'use client'` component wrapped in `<Suspense>` at the page level, or the build will fail with "missing-suspense-with-csr-bailout". Pattern: create a `PageContent.tsx` client component with the hook, import it in `page.tsx` inside `<Suspense fallback={...}>`.
 - Server auto-cleans abandoned orders on startup via `cleanupOrders.ts`
 - **Payment webhook limitation**: ToyyibPay webhooks cannot reach localhost during development. For local testing, use the manual completion endpoint or test on production/staging with public URL
 - **Order status flow**: PENDING → (payment success) → COMPLETED (skips CONFIRMED). Orders go directly to COMPLETED after successful payment to simplify the workflow
 - **BACKEND_URL is mandatory in production**: Without it, ToyyibPay webhooks default to localhost and fail silently. See `PAYMENT_WEBHOOK_FIX.md` for troubleshooting stuck payments.
 - **Category deletion**: Categories cannot be deleted if they have associated menu items (Restrict constraint). Move items to another category first, or delete them before removing a category.
+- **In-memory cache**: `backend/src/config/redis.ts` now provides a `Map`-based in-memory cache (no Redis/ioredis required). Cache is not shared between PM2 cluster instances and resets on restart. Replace with actual Redis if needed.
+- **ToyyibPay return URL**: Set to `${FRONTEND_URL}/verifying?order_id=${order.orderNo}` — not `/confirmation/...`. The `/verifying` page handles verification and redirects home.
+- **`payment.status` is the source of truth** for revenue calculations (not `order.status`, which can be manually changed).
 
 ## Payment Webhook Troubleshooting
 
@@ -250,16 +261,24 @@ See `PAYMENT_WEBHOOK_FIX.md` for detailed troubleshooting guide.
 5. Verify: `pm2 logs <process-name> --lines 20`
 6. Check PM2 status: `pm2 status`
 
-**Common deployment pattern** (used in recent work):
+**Common deployment pattern**:
 ```bash
-# Upload file
-sshpass -p 'Hostinger@2026' scp frontend/src/components/CartDropdown.tsx root@72.62.243.23:/var/www/agpa/frontend/src/components/
+# --- FRONTEND ---
+# Build locally (must be from frontend/ directory)
+cd frontend && npm run build
 
-# Build and restart in one command
-sshpass -p 'Hostinger@2026' ssh root@72.62.243.23 'cd /var/www/agpa/frontend && npm run build && pm2 restart agpa-frontend'
+# Upload full static build (nginx serves out/ directly)
+sshpass -p 'Hostinger@2026' rsync -avz --delete out/ root@72.62.243.23:/var/www/agpa/frontend/out/
 
-# Verify
-sshpass -p 'Hostinger@2026' ssh root@72.62.243.23 'pm2 logs agpa-frontend --lines 5 --nostream'
+# --- BACKEND ---
+# Upload changed source file(s)
+sshpass -p 'Hostinger@2026' scp backend/src/routes/payments.ts root@72.62.243.23:/var/www/agpa/backend/src/routes/
+
+# Rebuild and restart on VPS
+sshpass -p 'Hostinger@2026' ssh root@72.62.243.23 'cd /var/www/agpa/backend && npm run build && pm2 restart agpa-backend'
+
+# Verify logs
+sshpass -p 'Hostinger@2026' ssh root@72.62.243.23 'pm2 logs agpa-backend --lines 10 --nostream'
 ```
 
 **Production URLs**:
@@ -270,5 +289,6 @@ sshpass -p 'Hostinger@2026' ssh root@72.62.243.23 'pm2 logs agpa-frontend --line
 **Important notes**:
 - VPS is NOT a git repository - files must be copied manually via SCP
 - Always build after uploading changes
-- Both backend and frontend use PM2 for process management
-- Frontend uses `serve` (not `next start`) due to static export mode
+- Backend uses PM2 (`agpa-backend` cluster mode, 2 instances). Frontend PM2 process (`agpa-frontend`) is **stopped** — nginx serves the static `out/` directory directly.
+- For frontend, upload the entire `out/` directory via rsync after building locally: `rsync -avz --delete out/ root@72.62.243.23:/var/www/agpa/frontend/out/`
+- Nginx config at `/etc/nginx/sites-available/agpa.nextapmy.com` and `agpa-ip` handles dynamic route fallbacks (e.g. `/confirmation/[orderNo]` → `confirmation/_/index.html`)
