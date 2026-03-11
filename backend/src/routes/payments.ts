@@ -172,14 +172,10 @@ router.post('/verify/:orderNo', async (req, res) => {
       });
     }
 
-    // Already failed/cancelled — don't re-verify, tell frontend immediately
-    if (order.payment.status === 'FAILED' || order.status === 'CANCELLED') {
-      return res.json({
-        success: false,
-        failed: true,
-        message: 'Payment was declined or cancelled. Please place a new order.',
-      });
-    }
+    // If our system says FAILED/CANCELLED, still check ToyyibPay API to confirm.
+    // Webhook may have been wrong (e.g. status "3" ambiguity) — ToyyibPay might
+    // actually show status "1" (settled). If so, we recover the order.
+    const wasMarkedFailed = order.payment.status === 'FAILED' || order.status === 'CANCELLED';
 
     console.log(`🔍 Verifying payment for order ${order.orderNo} with billCode ${order.payment.billCode}`);
 
@@ -205,6 +201,9 @@ router.post('/verify/:orderNo', async (req, res) => {
     );
 
     if (settledTxn) {
+      if (wasMarkedFailed) {
+        console.log(`🔄 RECOVERY: Order ${order.orderNo} was marked FAILED/CANCELLED but ToyyibPay confirms PAID. Recovering...`);
+      }
       console.log(`✅ Found settled payment for ${order.orderNo}:`, settledTxn.billpaymentInvoiceNo);
 
       // Update payment status
@@ -292,7 +291,16 @@ router.post('/verify/:orderNo', async (req, res) => {
 
     if (status3Txn) {
       // Status "3" found but NOT settled yet — don't auto-confirm.
-      // Tell frontend to keep waiting. The webhook will confirm if payment is real.
+      if (wasMarkedFailed) {
+        // Already marked failed + status "3" is ambiguous → confirm failed
+        console.log(`❌ Order ${order.orderNo} was FAILED and ToyyibPay shows ambiguous status "3" — confirming failed`);
+        return res.json({
+          success: false,
+          failed: true,
+          message: 'Payment was unsuccessful. Please place a new order.',
+        });
+      }
+      // Fresh order — tell frontend to keep waiting. Webhook will confirm.
       console.log(`⏳ Status "3" (ambiguous) for ${order.orderNo} — waiting for webhook confirmation`);
       return res.json({
         success: false,
@@ -302,6 +310,14 @@ router.post('/verify/:orderNo', async (req, res) => {
     }
 
     // No settled, no status 3, not all failed — genuinely still pending
+    if (wasMarkedFailed) {
+      // Was marked failed and ToyyibPay has no success — confirm failed
+      return res.json({
+        success: false,
+        failed: true,
+        message: 'Payment was unsuccessful. Please place a new order.',
+      });
+    }
     return res.json({
       success: false,
       message: 'Payment is still being processed',
