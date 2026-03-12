@@ -4,6 +4,9 @@ import prisma from '../config/prisma';
 import { sendConfirmationEmail, scheduleReminder } from '../utils/email';
 import { getBillTransactions } from '../utils/toyyibpay';
 import { requireAdmin } from '../middlewares/auth';
+import { logEvent } from '../utils/systemLogger';
+
+const TOYYIBPAY_SECRET_KEY = process.env.TOYYIBPAY_SECRET_KEY || '';
 
 const router = Router();
 
@@ -12,11 +15,32 @@ router.post('/callback', async (req, res) => {
   try {
     console.log('🔔 ToyyibPay webhook received:', JSON.stringify(req.body));
 
-    const { billcode, order_id, status_id, transaction_id } = req.body;
+    const { billcode, order_id, status_id, transaction_id, refno, amount, reason, transaction_time, hash } = req.body;
 
     if (!billcode || !status_id) {
       console.error('❌ Webhook missing parameters:', req.body);
       return res.status(400).json({ error: 'Missing required callback parameters' });
+    }
+
+    // --- HASH VALIDATION ---
+    // ToyyibPay docs: MD5(userSecretKey + status + order_id + refno + "ok")
+    // Note: "status" in hash formula refers to status_id from callback
+    if (TOYYIBPAY_SECRET_KEY && hash) {
+      const expectedHash = crypto
+        .createHash('md5')
+        .update(TOYYIBPAY_SECRET_KEY + status_id + (order_id || '') + (refno || '') + 'ok')
+        .digest('hex');
+
+      if (hash !== expectedHash) {
+        console.error('❌ Webhook hash validation FAILED for billCode:', billcode, '| received:', hash, '| expected:', expectedHash);
+        logEvent('SECURITY', 'Webhook hash validation failed', `billCode: ${billcode}, order_id: ${order_id}`, { billcode, order_id, receivedHash: hash });
+        return res.status(403).json({ error: 'Invalid callback hash' });
+      }
+      console.log('🔐 Webhook hash validated OK');
+    } else if (TOYYIBPAY_SECRET_KEY && !hash) {
+      // Hash not provided but we have a secret key — log warning but don't block
+      // (DuitNow QR callbacks may have different hash format)
+      console.warn('⚠️ Webhook received without hash parameter for billCode:', billcode);
     }
 
     // Find payment by billCode
@@ -39,6 +63,19 @@ router.post('/callback', async (req, res) => {
     }
 
     console.log('📦 Found payment for order:', payment.order.orderNo);
+
+    // --- AMOUNT VALIDATION ---
+    // ToyyibPay sends amount as string in RM (e.g. "55.70")
+    // Our payment.amount is the order total in RM
+    if (amount && (status_id === '1' || status_id === '3')) {
+      const callbackAmount = parseFloat(amount);
+      const expectedAmount = Number(payment.amount);
+      if (!isNaN(callbackAmount) && Math.abs(callbackAmount - expectedAmount) > 0.01) {
+        console.error(`❌ Amount mismatch! Callback: RM${callbackAmount}, Expected: RM${expectedAmount}, Order: ${payment.order.orderNo}`);
+        logEvent('SECURITY', 'Payment amount mismatch', `Order ${payment.order.orderNo}: callback RM${callbackAmount} vs expected RM${expectedAmount}`, { orderNo: payment.order.orderNo, callbackAmount, expectedAmount });
+        return res.status(400).json({ error: 'Payment amount mismatch' });
+      }
+    }
 
     // Determine new payment status from webhook
     // Webhook status_id: 1=Settled(success), 3=Pending Settlement(success), 4=Failed
@@ -69,9 +106,10 @@ router.post('/callback', async (req, res) => {
     await prisma.payment.update({
       where: { id: payment.id },
       data: {
-        transactionId: transaction_id,
+        transactionId: transaction_id || refno || null,
         status: paymentStatus,
         statusCode: txnStatusCode,
+        statusReason: reason || null,
         paidAt: paymentStatus === 'SUCCESS' ? new Date() : null,
         callbackData: req.body,
       },
@@ -85,6 +123,7 @@ router.post('/callback', async (req, res) => {
       });
 
       console.log('✅ Order completed:', payment.order.orderNo);
+      logEvent('PAYMENT', 'Payment successful (webhook)', `Order ${payment.order.orderNo} paid via webhook`, { orderNo: payment.order.orderNo, transactionId: transaction_id, statusId: status_id });
 
       // Send confirmation email (non-blocking)
       sendConfirmationEmail(payment.order).catch((err) => {
@@ -102,6 +141,7 @@ router.post('/callback', async (req, res) => {
       });
 
       console.log('❌ Order cancelled due to failed payment:', payment.order.orderNo);
+      logEvent('PAYMENT', 'Payment failed (webhook)', `Order ${payment.order.orderNo} payment failed`, { orderNo: payment.order.orderNo, statusId: status_id });
 
       // If takeaway, decrement time slot
       if (payment.order.timeSlotId) {
@@ -115,6 +155,7 @@ router.post('/callback', async (req, res) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error('❌ Webhook processing error:', error);
+    logEvent('ERROR', 'Webhook processing error', (error as Error).message || 'Unknown error', { body: req.body });
     res.status(500).json({ error: 'Failed to process callback' });
   }
 });
@@ -203,6 +244,7 @@ router.post('/verify/:orderNo', async (req, res) => {
     if (settledTxn) {
       if (wasMarkedFailed) {
         console.log(`🔄 RECOVERY: Order ${order.orderNo} was marked FAILED/CANCELLED but ToyyibPay confirms PAID. Recovering...`);
+        logEvent('PAYMENT', 'Payment recovered (verify)', `Order ${order.orderNo} was FAILED but ToyyibPay confirms PAID. Recovered.`, { orderNo: order.orderNo, transactionId: settledTxn.billpaymentInvoiceNo });
       }
       console.log(`✅ Found settled payment for ${order.orderNo}:`, settledTxn.billpaymentInvoiceNo);
 
